@@ -40,6 +40,12 @@ function localDateKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function fmtDateKey(key) {
+  // key is "YYYY-MM-DD"; build the date from parts to avoid timezone shifts
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
 /* ------------------------------------------------------------------ */
 /*  Firestore live-document hook                                       */
 /*  Subscribes to a document; writes echo instantly on all devices.    */
@@ -297,6 +303,18 @@ function ItemCard({ item, me, members, onToggleDone, onReact, onComment, onDelet
             <span style={{ fontSize: 12, color: T.inkSoft }}>
               {item.author} · {new Date(item.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
             </span>
+            {item.dueDate && (
+              <span style={{
+                fontSize: 11.5, fontWeight: 700,
+                color: item.done ? T.inkSoft
+                  : item.dueDate < localDateKey() ? T.coral
+                  : item.dueDate === localDateKey() ? T.marigoldDeep
+                  : T.inkSoft,
+                background: "#F0F2F5", borderRadius: 6, padding: "1px 7px",
+              }}>
+                {item.dueDate === localDateKey() ? "today" : `for ${fmtDateKey(item.dueDate)}`}
+              </span>
+            )}
           </div>
         </div>
         <button
@@ -337,9 +355,10 @@ function ItemCard({ item, me, members, onToggleDone, onReact, onComment, onDelet
 /* ------------------------------------------------------------------ */
 /*  Generic list tab (groceries / todos / travel) — live synced        */
 /* ------------------------------------------------------------------ */
-function ListTab({ docId, me, members, placeholder, showCheckbox, emptyCopy }) {
+function ListTab({ docId, me, members, placeholder, showCheckbox, emptyCopy, withDueDate }) {
   const [data, save] = useHubDoc(docId);
   const [draft, setDraft] = useState("");
+  const [dueDraft, setDueDraft] = useState("");
   const items = data === undefined ? null : (data?.items || []);
 
   const persist = (next) => save({ items: next });
@@ -352,6 +371,7 @@ function ListTab({ docId, me, members, placeholder, showCheckbox, emptyCopy }) {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       text: t, author: me, createdAt: Date.now(),
       done: false, reactions: {}, comments: [],
+      dueDate: withDueDate && dueDraft ? dueDraft : null,
     }, ...items]);
   };
 
@@ -404,6 +424,35 @@ function ListTab({ docId, me, members, placeholder, showCheckbox, emptyCopy }) {
           <Plus size={17} /> Add
         </button>
       </div>
+
+      {withDueDate && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -8, marginBottom: 16 }}>
+          <span style={{ fontSize: 13, color: T.inkSoft, fontWeight: 600 }}>For which day?</span>
+          <input
+            type="date"
+            value={dueDraft}
+            onChange={(e) => setDueDraft(e.target.value)}
+            style={{
+              border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "6px 10px",
+              fontSize: 14, fontFamily: "Inter, sans-serif", color: T.ink,
+              background: T.card, outline: "none",
+            }}
+          />
+          {dueDraft && (
+            <button
+              onClick={() => setDueDraft("")}
+              style={{
+                border: "none", background: "transparent", color: T.inkSoft,
+                cursor: "pointer", fontSize: 13, fontWeight: 700, padding: "2px 4px",
+                fontFamily: "Inter, sans-serif",
+              }}
+            >
+              clear
+            </button>
+          )}
+          <span style={{ fontSize: 12, color: T.inkSoft }}>(optional)</span>
+        </div>
+      )}
 
       {items.length === 0 && (
         <div style={{
@@ -564,6 +613,7 @@ function HomeTab({ me, members, onGoTab }) {
   const [dinnersDoc] = useHubDoc("dinners");
   const [photoDoc, savePhoto, removePhotoDoc] = useHubDoc(`photo-${dateKey}`);
   const [checkinDoc, saveCheckin] = useHubDoc(`checkin-${dateKey}`);
+  const [workoutDoc, saveWorkout] = useHubDoc(`workout-${dateKey}`);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const [chatDraft, setChatDraft] = useState("");
@@ -571,7 +621,9 @@ function HomeTab({ me, members, onGoTab }) {
   const [replyDraft, setReplyDraft] = useState("");
   const fileInputRef = useRef(null);
 
-  const todos = (todosDoc?.items || []).filter((t) => !t.done);
+  const allOpenTodos = (todosDoc?.items || []).filter((t) => !t.done);
+  // Today's goals: items scheduled for today (or overdue), plus undated items
+  const todos = allOpenTodos.filter((t) => !t.dueDate || t.dueDate <= dateKey);
   const dinner = dinnersDoc?.days?.[todayName]?.meal || null;
   const checkin = checkinDoc === undefined ? null : (checkinDoc?.messages || []);
   const photo = photoDoc === undefined ? null : photoDoc;
@@ -786,6 +838,36 @@ function HomeTab({ me, members, onGoTab }) {
                 {mine.length > 6 && (
                   <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 4 }}>+ {mine.length - 6} more</div>
                 )}
+                {(() => {
+                  const workoutDone = !!(workoutDoc && workoutDoc[match]);
+                  return (
+                    <button
+                      onClick={() => saveWorkout({ ...(workoutDoc || {}), [match]: !workoutDone })}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, marginTop: 10,
+                        border: "none", background: "transparent", cursor: "pointer",
+                        padding: "6px 0 0", borderTop: `1px dashed ${T.line}`, width: "100%",
+                        fontFamily: "Inter, sans-serif",
+                      }}
+                    >
+                      <span style={{
+                        width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                        border: `2px solid ${workoutDone ? T.leaf : T.line}`,
+                        background: workoutDone ? T.leaf : "transparent",
+                        color: "#fff", display: "flex", alignItems: "center",
+                        justifyContent: "center", fontSize: 12, fontWeight: 800,
+                      }}>
+                        {workoutDone ? "✓" : ""}
+                      </span>
+                      <span style={{
+                        fontSize: 13.5, fontWeight: 800,
+                        color: workoutDone ? T.leaf : T.ink,
+                      }}>
+                        Workout!
+                      </span>
+                    </button>
+                  );
+                })()}
               </div>
             );
           })}
