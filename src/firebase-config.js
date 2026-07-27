@@ -16,4 +16,4 @@ export const firebaseConfig = {
 // Only the PASSWORD is typed on the site — this email is just its username.
 export const familyEmail = "family@fisherhub.local";
 
-238933491028-r2t4m0ofv884jlo93ogas2e61o7i3gca.apps.googleusercontent.com
+export const googleClientId = "238933491028-r2t4m0ofv884jlo93ogas2e61o7i3gca.apps.googleusercontent.com";
