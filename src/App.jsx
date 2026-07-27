@@ -71,6 +71,7 @@ function useIsWide() {
 function useHubDoc(path) {
   const [data, setData] = useState(undefined); // undefined = loading, null = missing
   useEffect(() => {
+    setData(undefined); // reset when switching documents so stale data never leaks across days
     const ref = doc(db, "hub", path);
     const unsub = onSnapshot(
       ref,
@@ -200,219 +201,40 @@ function Spinner() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Daily routine tracker                                              */
+/*  Daily routine tracker — per-person habit lists                     */
 /* ------------------------------------------------------------------ */
-const HABITS = [
-  { id: "exercise", label: "Exercise", icon: Dumbbell },
-  { id: "hydration", label: "Hydration", icon: Droplet },
-  { id: "eat", label: "Eat well", icon: Apple },
-  { id: "deepwork", label: "Deep work", icon: Target },
-  { id: "shutdown", label: "Shutdown", icon: Power },
-  { id: "family", label: "Family time", icon: Heart },
-  { id: "bed", label: "In bed 9:15", icon: Moon },
+const DEFAULT_HABITS_MIKE = [
+  { id: "exercise", label: "Exercise" },
+  { id: "hydration", label: "Hydration" },
+  { id: "eat", label: "Eat well" },
+  { id: "deepwork", label: "Deep work" },
+  { id: "shutdown", label: "Shutdown" },
+  { id: "family", label: "Family time" },
+  { id: "bed", label: "In bed 9:15" },
 ];
+
+/* Tina starts with a blank slate and builds her own; Mike keeps his defaults.
+   Once either person saves an edited list, that list wins. */
+function habitsFor(templateDoc, match) {
+  const custom = templateDoc && templateDoc[match] && templateDoc[match].habits;
+  if (custom !== undefined && custom !== null) return custom;
+  return match === "mike" ? DEFAULT_HABITS_MIKE : [];
+}
+function anchorsFor(templateDoc, match) {
+  const a = templateDoc && templateDoc[match] && templateDoc[match].anchors;
+  if (a !== undefined && a !== null) return a;
+  return match === "mike" ? DEFAULT_ANCHORS : [];
+}
+function wrapupFor(templateDoc, match) {
+  const w = templateDoc && templateDoc[match] && templateDoc[match].wrapup;
+  if (w !== undefined && w !== null) return w;
+  return match === "mike" ? DEFAULT_WRAPUP : [];
+}
 
 function dateKeyOffset(offset) {
   const d = new Date();
   d.setDate(d.getDate() + offset);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/* "Never miss twice": one missed day pauses the streak (grace);
-   two consecutive missed days reset it. Today being unchecked (yet)
-   never penalizes the streak. */
-function habitStreak(days, habitId, doneToday) {
-  let streak = doneToday ? 1 : 0;
-  let misses = 0;
-  for (let i = 1; i < 400; i++) {
-    const done = ((days[dateKeyOffset(-i)] || {})[habitId] || 0) > 0;
-    if (done) { streak++; misses = 0; }
-    else {
-      misses++;
-      if (misses >= 2) break;
-    }
-  }
-  const missedYesterday = !(((days[dateKeyOffset(-1)] || {})[habitId] || 0) > 0);
-  return { streak, grace: !doneToday && missedYesterday && streak > 0 };
-}
-
-function RoutineCard({ onGoTab }) {
-  const todayKey = localDateKey();
-  const [routineDoc, saveRoutine] = useHubDoc("routine");
-  const [legacyWorkout] = useHubDoc(`workout-${todayKey}`);
-
-  const card = {
-    background: T.card, borderRadius: 14, padding: "14px 16px",
-    border: `1px solid ${T.line}`, marginBottom: 14,
-  };
-
-  if (routineDoc === undefined) {
-    return (
-      <div style={card}>
-        <SectionTitle>Daily routine</SectionTitle>
-        <div style={{ color: T.inkSoft, fontSize: 14 }}>Loading…</div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={card}>
-      <SectionTitle>Daily routine</SectionTitle>
-      <div style={{ fontSize: 12, color: T.inkSoft, marginTop: -4, marginBottom: 10, lineHeight: 1.4 }}>
-        Your day in order — every check is a vote for the person you're becoming.
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {[
-          { label: "Mike", match: "mike" },
-          { label: "Tina", match: "tina" },
-        ].map(({ label, match }) => {
-          const person = (routineDoc && routineDoc[match]) || {};
-          const days = person.days || {};
-          const today = days[todayKey] || {};
-          const isDone = (h) =>
-            h.id in today
-              ? (today[h.id] || 0) > 0
-              : h.id === "exercise" && !!(legacyWorkout && legacyWorkout[match]);
-          const doneCount = HABITS.filter(isDone).length;
-          const allDone = doneCount === HABITS.length;
-
-          const setHabit = (habitId, val) => {
-            const nextToday = { ...today, [habitId]: val ? 1 : 0 };
-            saveRoutine({
-              ...(routineDoc || {}),
-              [match]: { ...person, days: { ...days, [todayKey]: nextToday } },
-            });
-          };
-
-          // Last 7 days chain + weekly identity votes
-          const dots = [];
-          let votes = 0;
-          for (let i = 6; i >= 0; i--) {
-            const k = dateKeyOffset(-i);
-            const rec = days[k] || {};
-            let c = HABITS.filter((h) => (rec[h.id] || 0) > 0).length;
-            if (i === 0) c = doneCount;
-            votes += c;
-            const [y, m, dd] = k.split("-").map(Number);
-            dots.push({
-              k, c,
-              w: new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: "narrow" }),
-            });
-          }
-
-          return (
-            <div key={match} style={{
-              background: "#FAFBFC", border: `1px solid ${allDone ? T.leaf : T.line}`,
-              borderRadius: 12, padding: "10px 12px",
-              boxShadow: allDone ? `0 0 0 2px ${T.leaf}22` : "none",
-            }}>
-              <div style={{
-                fontSize: 12.5, fontWeight: 800, color: T.marigoldDeep,
-                textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6,
-                fontFamily: "Inter, sans-serif",
-              }}>
-                {label} · {doneCount}/{HABITS.length}
-              </div>
-
-              {HABITS.map((h) => {
-                const done = isDone(h);
-                const { streak, grace } = habitStreak(days, h.id, done);
-                const Icon = h.icon;
-                return (
-                  <button
-                    key={h.id}
-                    onClick={() => setHabit(h.id, !done)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 7, width: "100%",
-                      border: "none", background: "transparent", padding: "4px 0",
-                      cursor: "pointer", fontFamily: "Inter, sans-serif", textAlign: "left",
-                    }}
-                  >
-                    <span
-                      key={done ? "y" : "n"}
-                      style={{
-                        width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                        border: `2px solid ${done ? T.leaf : T.line}`,
-                        background: done ? T.leaf : "transparent",
-                        color: "#fff", display: "flex", alignItems: "center",
-                        justifyContent: "center", fontSize: 12, fontWeight: 800,
-                        animation: done ? "pop .25s ease" : "none",
-                      }}
-                    >
-                      {done ? "✓" : ""}
-                    </span>
-                    <Icon size={13} color={done ? T.leaf : T.inkSoft} style={{ flexShrink: 0 }} />
-                    <span style={{
-                      fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 0,
-                      color: done ? T.leaf : T.ink,
-                    }}>
-                      {h.label}
-                    </span>
-                    {streak > 0 && (
-                      <span
-                        title={grace ? "Missed yesterday — do it today to keep the streak" : `${streak}-day streak`}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 2,
-                          fontSize: 11, fontWeight: 800,
-                          color: grace ? "#B07E10" : T.leaf,
-                        }}
-                      >
-                        <Flame size={11} />{streak}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-
-              <div style={{ display: "flex", gap: 5, marginTop: 8 }}>
-                {dots.map((d) => (
-                  <div key={d.k} style={{ textAlign: "center" }}>
-                    <div style={{
-                      width: 10, height: 10, borderRadius: "50%", margin: "0 auto",
-                      background: d.c === HABITS.length ? T.leaf : d.c > 0 ? T.marigold : "transparent",
-                      border: d.c === 0 ? `1.5px solid ${T.line}` : "none",
-                      opacity: d.c > 0 && d.c < HABITS.length ? 0.75 : 1,
-                    }} />
-                    <div style={{ fontSize: 8.5, color: T.inkSoft, marginTop: 2 }}>{d.w}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 6 }}>
-                {votes} {votes === 1 ? "vote" : "votes"} cast this week
-              </div>
-
-              {allDone && (
-                <div style={{
-                  marginTop: 10, background: T.leafSoft, border: `1px solid ${T.leaf}`,
-                  borderRadius: 10, padding: "8px 10px", textAlign: "center",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
-                    {[0, 1, 2].map((i) => (
-                      <Fish key={i} size={18} color={T.marigold}
-                        style={{ animation: `bob 1s ease-in-out ${i * 0.15}s infinite alternate` }} />
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: T.leaf, marginTop: 4 }}>
-                    Perfect day!
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <button
-        onClick={() => onGoTab("plan")}
-        style={{
-          marginTop: 10, border: "none", background: "transparent", color: T.marigoldDeep,
-          cursor: "pointer", fontSize: 13, fontWeight: 700, padding: 0,
-          display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "Inter, sans-serif",
-        }}
-      >
-        Run your 3:30 shutdown <ArrowRight size={13} />
-      </button>
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -482,6 +304,12 @@ function weekdayOf(offset) {
   return d.toLocaleDateString(undefined, { weekday: "long" });
 }
 
+function weekdayShort(offset) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString(undefined, { weekday: "short" });
+}
+
 function isWeekendKey(key) {
   const [y, m, d] = key.split("-").map(Number);
   const day = new Date(y, m - 1, d).getDay();
@@ -512,6 +340,25 @@ function AnchorEditor({ items, onSave }) {
   };
 
   if (!editing) {
+    if (items.length === 0) {
+      return (
+        <div>
+          <div style={{ fontSize: 13, color: T.inkSoft, lineHeight: 1.5, marginBottom: 8 }}>
+            Nothing here yet — build your own.
+          </div>
+          <button
+            onClick={() => { setDraft([{ t: "", label: "" }]); setEditing(true); }}
+            style={{
+              border: "none", background: T.marigold, color: T.ink, borderRadius: 8,
+              padding: "7px 12px", cursor: "pointer", fontWeight: 800, fontSize: 12.5,
+              fontFamily: "Inter, sans-serif",
+            }}
+          >
+            + Add your first line
+          </button>
+        </div>
+      );
+    }
     return (
       <div>
         {items.map((a, i) => (
@@ -631,8 +478,10 @@ function TodaySchedule({ meMatch, onGoTab }) {
   };
 
   const p = { ...EMPTY_PLAN, ...((planDoc || {})[view] || {}) };
-  const anchors = (templateDoc || {})[view]?.anchors || DEFAULT_ANCHORS;
-  const wrapup = (templateDoc || {})[view]?.wrapup || DEFAULT_WRAPUP;
+  const anchors = anchorsFor(templateDoc, view);
+  const wrapup = wrapupFor(templateDoc, view);
+  const personHabits = habitsFor(templateDoc, view);
+  const hasHabit = (id) => personHabits.some((h) => h.id === id);
   const w1 = (p.w1 || []).filter((l) => l && l.trim());
   const w2 = (p.w2 || []).filter((l) => l && l.trim());
   const fun = (p.fun || []).filter((l) => l && l.trim());
@@ -654,7 +503,7 @@ function TodaySchedule({ meMatch, onGoTab }) {
     const doneArr = [...(p[which + "done"] || [])];
     doneArr[idx] = !doneArr[idx];
     setPerson({ ...p, [which + "done"]: doneArr });
-    if (which === "w1" && lines.every((_, k) => (k === idx ? doneArr[idx] : doneArr[k]))) {
+    if (which === "w1" && hasHabit("exercise") && lines.every((_, k) => (k === idx ? doneArr[idx] : doneArr[k]))) {
       setHabit("exercise", true);
     }
   };
@@ -672,8 +521,8 @@ function TodaySchedule({ meMatch, onGoTab }) {
   }
   w2.forEach((_, i) => items.push(!!(p.w2done || [])[i]));
   if ((planDoc || {}).dinner) items.push(!!(planDoc || {}).dinnerDone);
-  items.push((rToday.family || 0) > 0);
-  items.push((rToday.bed || 0) > 0);
+  if (hasHabit("family")) items.push((rToday.family || 0) > 0);
+  if (hasHabit("bed")) items.push((rToday.bed || 0) > 0);
   const doneN = items.filter(Boolean).length;
   const allDone = items.length > 0 && doneN === items.length;
   const pct = items.length ? Math.round((doneN / items.length) * 100) : 0;
@@ -877,21 +726,25 @@ function TodaySchedule({ meMatch, onGoTab }) {
         </TimeRow>
       )}
 
-      {/* Evening habits, wired to the routine tracker */}
-      <TimeRow time="6:00 PM">
-        <CheckRow
-          done={(rToday.family || 0) > 0}
-          label="Family time — phone away"
-          onToggle={() => setHabit("family", !((rToday.family || 0) > 0))}
-        />
-      </TimeRow>
-      <TimeRow time="9:15 PM">
-        <CheckRow
-          done={(rToday.bed || 0) > 0}
-          label="In bed — tomorrow starts tonight"
-          onToggle={() => setHabit("bed", !((rToday.bed || 0) > 0))}
-        />
-      </TimeRow>
+      {/* Evening habits, wired to the routine tracker (shown only if in that person's routine) */}
+      {hasHabit("family") && (
+        <TimeRow time="6:00 PM">
+          <CheckRow
+            done={(rToday.family || 0) > 0}
+            label="Family time — phone away"
+            onToggle={() => setHabit("family", !((rToday.family || 0) > 0))}
+          />
+        </TimeRow>
+      )}
+      {hasHabit("bed") && (
+        <TimeRow time="9:15 PM">
+          <CheckRow
+            done={(rToday.bed || 0) > 0}
+            label="In bed — tomorrow starts tonight"
+            onToggle={() => setHabit("bed", !((rToday.bed || 0) > 0))}
+          />
+        </TimeRow>
+      )}
 
       {allDone && (
         <div style={{
@@ -1003,7 +856,7 @@ function TomorrowSnapshot({ meMatch, onGoTab }) {
 /*  Plan tab — the 3:30 shutdown, in the order of the day it builds    */
 /* ------------------------------------------------------------------ */
 function PlanTab({ meMatch, meName }) {
-  const [offset, setOffset] = useState(1); // 1 = tomorrow, 2 = day after
+  const [offset, setOffset] = useState(1); // 1 = tomorrow … 5 = four days after
   const dateKey = dateKeyOffset(offset);
   const [planDoc, savePlan] = useHubDoc(`plan-${dateKey}`);
   const [templateDoc, saveTemplate] = useHubDoc("template");
@@ -1062,8 +915,8 @@ function PlanTab({ meMatch, meName }) {
 
   const targetWeekend = isWeekendKey(dateKey);
   const todayWeekend = isWeekendKey(localDateKey());
-  const anchors = (templateDoc || {})[meMatch]?.anchors || DEFAULT_ANCHORS;
-  const wrapup = (templateDoc || {})[meMatch]?.wrapup || DEFAULT_WRAPUP;
+  const anchors = anchorsFor(templateDoc, meMatch);
+  const wrapup = wrapupFor(templateDoc, meMatch);
   const saveAnchors = (next) => saveTemplate({
     ...(templateDoc || {}),
     [meMatch]: { ...((templateDoc || {})[meMatch] || {}), anchors: next },
@@ -1092,8 +945,8 @@ function PlanTab({ meMatch, meName }) {
         <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 20, fontWeight: 800, color: T.ink }}>
           The 3:30 shutdown
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {[1, 2].map((o) => (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {[1, 2, 3, 4, 5].map((o) => (
             <button
               key={o}
               onClick={() => setOffset(o)}
@@ -1101,11 +954,11 @@ function PlanTab({ meMatch, meName }) {
                 border: `1.5px solid ${offset === o ? T.ink : T.line}`,
                 background: offset === o ? T.ink : "transparent",
                 color: offset === o ? "#fff" : T.inkSoft,
-                borderRadius: 999, padding: "4px 12px", fontSize: 12.5, fontWeight: 700,
+                borderRadius: 999, padding: "4px 11px", fontSize: 12.5, fontWeight: 700,
                 cursor: "pointer", fontFamily: "Inter, sans-serif",
               }}
             >
-              {weekdayOf(o)}
+              {weekdayShort(o)}
             </button>
           ))}
         </div>
@@ -1367,8 +1220,6 @@ function HomeTab({ me, meMatch, members, onGoTab, wide }) {
       <TodaySchedule meMatch={meMatch} onGoTab={onGoTab} />
 
       <TomorrowSnapshot meMatch={meMatch} onGoTab={onGoTab} />
-
-      <RoutineCard onGoTab={onGoTab} />
       </div>
       <div>
       {/* Weather */}
