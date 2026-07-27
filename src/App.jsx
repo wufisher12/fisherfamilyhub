@@ -7,7 +7,9 @@ import {
   Power, ClipboardList, Star,
 } from "lucide-react";
 import { auth, db, configured } from "./lib/firebase.js";
-import { familyEmail } from "./firebase-config.js";
+import * as appConfig from "./firebase-config.js";
+const familyEmail = appConfig.familyEmail;
+const googleClientId = appConfig.googleClientId || null;
 import { HUB_EMAIL } from "./firebase-config.js";
 import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut,
@@ -461,15 +463,164 @@ function WorkoutLines({ lines, setLines, onBlur, placeholder }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Google Calendar (read-only, Mike's device)                         */
+/* ------------------------------------------------------------------ */
+let gisPromise = null;
+function loadGis() {
+  if (gisPromise) return gisPromise;
+  gisPromise = new Promise((resolve, reject) => {
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) return resolve();
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Couldn't load Google sign-in"));
+    document.head.appendChild(s);
+  });
+  return gisPromise;
+}
+
+function getStoredGToken() {
+  try {
+    const t = JSON.parse(localStorage.getItem("gcal_token"));
+    if (t && t.expiry > Date.now() + 60000) return t;
+  } catch { /* none */ }
+  return null;
+}
+
+async function requestGToken(silent) {
+  await loadGis();
+  return new Promise((resolve, reject) => {
+    const tc = window.google.accounts.oauth2.initTokenClient({
+      client_id: googleClientId,
+      scope: "https://www.googleapis.com/auth/calendar.readonly",
+      callback: (resp) => {
+        if (resp.error) return reject(new Error(resp.error));
+        const tok = {
+          access_token: resp.access_token,
+          expiry: Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000,
+        };
+        localStorage.setItem("gcal_token", JSON.stringify(tok));
+        localStorage.setItem("gcal_connected", "1");
+        resolve(tok);
+      },
+      error_callback: (e) => reject(new Error((e && e.message) || "Google sign-in was closed")),
+    });
+    tc.requestAccessToken({ prompt: silent ? "" : "consent" });
+  });
+}
+
+async function ensureGToken(interactive) {
+  const t = getStoredGToken();
+  if (t) return t;
+  if (interactive) return requestGToken(false);
+  if (localStorage.getItem("gcal_connected")) {
+    try { return await requestGToken(true); } catch { return null; }
+  }
+  return null;
+}
+
+function CalendarCard({ dateKey, title }) {
+  const [state, setState] = useState({ status: "loading", events: [] });
+
+  const load = useCallback(async (interactive) => {
+    if (!googleClientId) { setState({ status: "unconfigured", events: [] }); return; }
+    setState((s) => ({ ...s, status: "loading" }));
+    try {
+      const tok = await ensureGToken(interactive);
+      if (!tok) { setState({ status: "disconnected", events: [] }); return; }
+      const [y, m, d] = dateKey.split("-").map(Number);
+      const start = new Date(y, m - 1, d);
+      const end = new Date(y, m - 1, d + 1);
+      const url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+        + "?singleEvents=true&orderBy=startTime&maxResults=15"
+        + `&timeMin=${encodeURIComponent(start.toISOString())}`
+        + `&timeMax=${encodeURIComponent(end.toISOString())}`;
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${tok.access_token}` } });
+      if (resp.status === 401 || resp.status === 403) {
+        localStorage.removeItem("gcal_token");
+        setState({ status: "disconnected", events: [] });
+        return;
+      }
+      if (!resp.ok) throw new Error(`calendar service ${resp.status}`);
+      const data = await resp.json();
+      setState({ status: "ok", events: data.items || [] });
+    } catch (e) {
+      setState({ status: "error", events: [], err: e.message });
+    }
+  }, [dateKey]);
+
+  useEffect(() => { load(false); }, [load]);
+
+  if (state.status === "unconfigured") return null;
+
+  const card = {
+    background: T.card, borderRadius: 14, padding: "14px 16px",
+    border: `1px solid ${T.line}`, marginBottom: 14,
+  };
+
+  return (
+    <div style={card}>
+      <SectionTitle>{title}</SectionTitle>
+      {state.status === "loading" && (
+        <div style={{ color: T.inkSoft, fontSize: 13.5 }}>Checking the calendar…</div>
+      )}
+      {state.status === "disconnected" && (
+        <div>
+          <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5, marginBottom: 10 }}>
+            Connect your Google Calendar to see the day's events here. Read-only — the hub can look, never touch.
+          </div>
+          <button
+            onClick={() => load(true)}
+            style={{
+              border: "none", background: T.marigold, color: T.ink, borderRadius: 10,
+              padding: "9px 16px", cursor: "pointer", fontWeight: 800, fontSize: 13.5,
+              fontFamily: "Inter, sans-serif",
+            }}
+          >
+            Connect Google Calendar
+          </button>
+        </div>
+      )}
+      {state.status === "error" && (
+        <div style={{ fontSize: 13, color: T.coral, lineHeight: 1.5 }}>
+          Calendar hiccup ({state.err}).{" "}
+          <button onClick={() => load(true)} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontWeight: 800, padding: 0, textDecoration: "underline", fontFamily: "Inter, sans-serif", fontSize: 13 }}>
+            Try again
+          </button>
+        </div>
+      )}
+      {state.status === "ok" && (
+        state.events.length === 0 ? (
+          <div style={{ fontSize: 13.5, color: T.inkSoft }}>Nothing on the calendar — a clear runway.</div>
+        ) : (
+          state.events.map((ev) => {
+            const timed = ev.start && ev.start.dateTime;
+            const label = timed
+              ? new Date(ev.start.dateTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+              : "All day";
+            return (
+              <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 8, padding: "4px 0", alignItems: "start" }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, color: T.marigoldDeep, paddingTop: 2, whiteSpace: "nowrap" }}>{label}</span>
+                <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.45 }}>{ev.summary || "(no title)"}</span>
+              </div>
+            );
+          })
+        )
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Today's schedule — everything today, in order, checkable          */
 /* ------------------------------------------------------------------ */
-function TodaySchedule({ meMatch, onGoTab }) {
+function TodaySchedule({ view, setView, onGoTab }) {
   const todayKey = localDateKey();
   const [planDoc, savePlan] = useHubDoc(`plan-${todayKey}`);
   const [templateDoc] = useHubDoc("template");
   const [routineDoc, saveRoutine] = useHubDoc("routine");
   const [winsDoc, saveWins] = useHubDoc("daywins");
-  const [view, setView] = useState(meMatch);
   const weekend = isWeekendKey(todayKey);
 
   const card = {
@@ -799,7 +950,7 @@ function TomorrowSnapshot({ meMatch, onGoTab }) {
   return (
     <div style={card}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <SectionTitle>Tomorrow's snapshot — {weekdayOf(1)}</SectionTitle>
+        <SectionTitle>Tomorrow's snapshot — {weekdayOf(1)} · {meMatch === "tina" ? "Tina" : "Mike"}</SectionTitle>
         {p.shutdownComplete && (
           <span style={{ fontSize: 11.5, fontWeight: 800, color: T.leaf, marginBottom: 10 }}>Shutdown done ✓</span>
         )}
@@ -871,12 +1022,11 @@ function PlanTab({ meMatch, meName }) {
   const [dinner, setDinner] = useState("");
   const [prep, setPrep] = useState({ inbox: false, calendar: false });
   const [completed, setCompleted] = useState(false);
-  const loadedFor = useRef(null);
+  const [hydratedKey, setHydratedKey] = useState(null);
 
   useEffect(() => {
-    if (planDoc === undefined) return;
-    if (loadedFor.current === dateKey) return;
-    loadedFor.current = dateKey;
+    if (planDoc === undefined) return;   // still loading this day
+    if (hydratedKey === dateKey) return; // already hydrated for this day
     const p = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
     setTop3([...p.top3]);
     setStar(p.star ?? 0);
@@ -887,9 +1037,11 @@ function PlanTab({ meMatch, meName }) {
     setPrep({ ...p.prep });
     setCompleted(!!p.shutdownComplete);
     setDinner((planDoc || {}).dinner || "");
-  }, [planDoc, dateKey, meMatch]);
+    setHydratedKey(dateKey);
+  }, [planDoc, dateKey, meMatch, hydratedKey]);
 
   const persist = (overrides = {}) => {
+    if (hydratedKey !== dateKey) return; // never save stale contents onto a different day
     const existing = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
     const person = {
       ...existing,
@@ -904,6 +1056,7 @@ function PlanTab({ meMatch, meName }) {
   };
 
   const completeShutdown = () => {
+    if (hydratedKey !== dateKey) return;
     setCompleted(true);
     persist({ person: { shutdownComplete: true } });
     const todayKey = localDateKey();
@@ -939,6 +1092,8 @@ function PlanTab({ meMatch, meName }) {
     <span style={{ fontSize: 11, fontWeight: 800, color: T.marigoldDeep, marginRight: 6 }}>{t}</span>
   );
 
+  const ready = planDoc !== undefined && hydratedKey === dateKey;
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
@@ -968,6 +1123,19 @@ function PlanTab({ meMatch, meName }) {
         Ten minutes now buys a decided morning. Fields save when you tap away.
       </div>
 
+      {meMatch === "mike" && (
+        <CalendarCard dateKey={dateKey} title={`On the calendar — ${weekdayOf(offset)}`} />
+      )}
+
+      {!ready ? (
+        <div style={{
+          background: T.card, borderRadius: 14, padding: "40px 16px", border: `1px solid ${T.line}`,
+          display: "flex", justifyContent: "center", color: T.inkSoft,
+        }}>
+          <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
+        </div>
+      ) : (
+      <>
       {/* Step 0 — about TODAY (skip on weekends: no work to close) */}
       {!todayWeekend && (
       <div style={card}>
@@ -1122,6 +1290,8 @@ function PlanTab({ meMatch, meName }) {
           Shutdown complete 🐠
         </button>
       )}
+      </>
+      )}
     </div>
   );
 }
@@ -1132,6 +1302,7 @@ function PlanTab({ meMatch, meName }) {
 function HomeTab({ me, meMatch, members, onGoTab, wide }) {
   const dateKey = localDateKey();
   const todayName = DAYS[(new Date().getDay() + 6) % 7];
+  const [schedView, setSchedView] = useState(meMatch);
 
   const [weather, setWeather] = useState(null);
   const [weatherBusy, setWeatherBusy] = useState(true);
@@ -1217,9 +1388,13 @@ function HomeTab({ me, meMatch, members, onGoTab, wide }) {
 
       <div style={wide ? { display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 16, alignItems: "start" } : undefined}>
       <div>
-      <TodaySchedule meMatch={meMatch} onGoTab={onGoTab} />
+      <TodaySchedule view={schedView} setView={setSchedView} onGoTab={onGoTab} />
 
-      <TomorrowSnapshot meMatch={meMatch} onGoTab={onGoTab} />
+      {meMatch === "mike" && schedView === "mike" && (
+        <CalendarCard dateKey={dateKey} title="Today's calendar" />
+      )}
+
+      <TomorrowSnapshot meMatch={schedView} onGoTab={onGoTab} />
       </div>
       <div>
       {/* Weather */}
