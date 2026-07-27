@@ -3,6 +3,8 @@ import {
   ShoppingCart, UtensilsCrossed, CheckSquare, Plane, Plus,
   ThumbsUp, MessageCircle, Trash2, Send, Loader2, ChevronDown,
   Fish, RefreshCw, Camera, CornerDownRight, Sun, ArrowRight, LogOut,
+  Dumbbell, Droplet, Apple, Target, Moon, Heart, Flame,
+  Power, ClipboardList, Star,
 } from "lucide-react";
 import { auth, db, configured } from "./lib/firebase.js";
 import { familyEmail } from "./firebase-config.js";
@@ -160,26 +162,6 @@ function Avatar({ name, color, size = 26 }) {
   );
 }
 
-function ReactionButton({ count, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 5,
-        border: `1.5px solid ${active ? T.leaf : T.line}`,
-        background: active ? T.leafSoft : "transparent",
-        color: active ? T.leaf : T.inkSoft,
-        borderRadius: 999, padding: "4px 10px", cursor: "pointer",
-        fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-        transition: "all .15s ease",
-      }}
-    >
-      <ThumbsUp size={14} />
-      {count > 0 && <span>{count}</span>}
-    </button>
-  );
-}
-
 function SectionTitle({ children }) {
   return (
     <div style={{
@@ -202,399 +184,627 @@ function Spinner() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Comment thread                                                     */
+/*  Daily routine tracker                                              */
 /* ------------------------------------------------------------------ */
-function CommentThread({ comments = [], me, members, onAdd }) {
-  const [text, setText] = useState("");
-  const submit = () => {
-    const t = text.trim();
-    if (!t) return;
-    onAdd(t);
-    setText("");
-  };
-  return (
-    <div style={{ marginTop: 10, borderTop: `1px dashed ${T.line}`, paddingTop: 10 }}>
-      {comments.map((c, i) => (
-        <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <Avatar name={c.author} color={members[c.author]} size={22} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>
-              {c.author}
-              <span style={{ fontWeight: 400, marginLeft: 6 }}>
-                {new Date(c.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-              </span>
-            </div>
-            <div style={{ fontSize: 14, color: T.ink, lineHeight: 1.4 }}>{c.text}</div>
-          </div>
-        </div>
-      ))}
-      <div style={{ display: "flex", gap: 6 }}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder={`Reply as ${me}…`}
-          style={{
-            flex: 1, border: `1.5px solid ${T.line}`, borderRadius: 10,
-            padding: "7px 10px", fontSize: 14, fontFamily: "Inter, sans-serif",
-            outline: "none", background: "#FAFBFC", color: T.ink,
-          }}
-        />
-        <button
-          onClick={submit}
-          style={{
-            border: "none", background: T.ink, color: "#fff", borderRadius: 10,
-            width: 36, display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer",
-          }}
-        >
-          <Send size={15} />
-        </button>
-      </div>
-    </div>
-  );
+const HABITS = [
+  { id: "exercise", label: "Exercise", icon: Dumbbell },
+  { id: "hydration", label: "Hydration", icon: Droplet },
+  { id: "eat", label: "Eat well", icon: Apple },
+  { id: "deepwork", label: "Deep work", icon: Target },
+  { id: "shutdown", label: "Shutdown", icon: Power },
+  { id: "family", label: "Family time", icon: Heart },
+  { id: "bed", label: "In bed 9:15", icon: Moon },
+];
+
+function dateKeyOffset(offset) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Generic item card                                                  */
-/* ------------------------------------------------------------------ */
-function ItemCard({ item, me, members, onToggleDone, onReact, onComment, onDelete, showCheckbox }) {
-  const [open, setOpen] = useState(false);
-  const ups = Object.values(item.reactions || {}).filter((r) => r === "up").length;
-  const mine = (item.reactions || {})[me];
+/* "Never miss twice": one missed day pauses the streak (grace);
+   two consecutive missed days reset it. Today being unchecked (yet)
+   never penalizes the streak. */
+function habitStreak(days, habitId, doneToday) {
+  let streak = doneToday ? 1 : 0;
+  let misses = 0;
+  for (let i = 1; i < 400; i++) {
+    const done = ((days[dateKeyOffset(-i)] || {})[habitId] || 0) > 0;
+    if (done) { streak++; misses = 0; }
+    else {
+      misses++;
+      if (misses >= 2) break;
+    }
+  }
+  const missedYesterday = !(((days[dateKeyOffset(-1)] || {})[habitId] || 0) > 0);
+  return { streak, grace: !doneToday && missedYesterday && streak > 0 };
+}
+
+function RoutineCard({ onGoTab }) {
+  const todayKey = localDateKey();
+  const [routineDoc, saveRoutine] = useHubDoc("routine");
+  const [legacyWorkout] = useHubDoc(`workout-${todayKey}`);
+
+  const card = {
+    background: T.card, borderRadius: 14, padding: "14px 16px",
+    border: `1px solid ${T.line}`, marginBottom: 14,
+  };
+
+  if (routineDoc === undefined) {
+    return (
+      <div style={card}>
+        <SectionTitle>Daily routine</SectionTitle>
+        <div style={{ color: T.inkSoft, fontSize: 14 }}>Loading…</div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      style={{
-        background: T.card, borderRadius: 14, padding: "12px 14px",
-        border: `1px solid ${T.line}`, marginBottom: 10,
-        opacity: item.done ? 0.55 : 1, transition: "opacity .2s",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        {showCheckbox && (
-          <button
-            onClick={onToggleDone}
-            aria-label={item.done ? "Mark not done" : "Mark done"}
-            style={{
-              width: 22, height: 22, borderRadius: 7, marginTop: 2,
-              border: `2px solid ${item.done ? T.leaf : T.line}`,
-              background: item.done ? T.leaf : "transparent",
-              color: "#fff", cursor: "pointer", flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 13, fontWeight: 800,
-            }}
-          >
-            {item.done ? "✓" : ""}
-          </button>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 15, fontWeight: 600, color: T.ink, lineHeight: 1.35,
-              textDecoration: item.done ? "line-through" : "none",
-              overflowWrap: "break-word",
-            }}
-          >
-            {item.text}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-            <Avatar name={item.author} color={members[item.author]} size={16} />
-            <span style={{ fontSize: 12, color: T.inkSoft }}>
-              {item.author} · {new Date(item.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-            </span>
-            {item.dueDate && (
-              <span style={{
-                fontSize: 11.5, fontWeight: 700,
-                color: item.done ? T.inkSoft
-                  : item.dueDate < localDateKey() ? T.coral
-                  : item.dueDate === localDateKey() ? T.marigoldDeep
-                  : T.inkSoft,
-                background: "#F0F2F5", borderRadius: 6, padding: "1px 7px",
+    <div style={card}>
+      <SectionTitle>Daily routine</SectionTitle>
+      <div style={{ fontSize: 12, color: T.inkSoft, marginTop: -4, marginBottom: 10, lineHeight: 1.4 }}>
+        Your day in order — every check is a vote for the person you're becoming.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {[
+          { label: "Mike", match: "mike" },
+          { label: "Tina", match: "tina" },
+        ].map(({ label, match }) => {
+          const person = (routineDoc && routineDoc[match]) || {};
+          const days = person.days || {};
+          const today = days[todayKey] || {};
+          const isDone = (h) =>
+            h.id in today
+              ? (today[h.id] || 0) > 0
+              : h.id === "exercise" && !!(legacyWorkout && legacyWorkout[match]);
+          const doneCount = HABITS.filter(isDone).length;
+          const allDone = doneCount === HABITS.length;
+
+          const setHabit = (habitId, val) => {
+            const nextToday = { ...today, [habitId]: val ? 1 : 0 };
+            saveRoutine({
+              ...(routineDoc || {}),
+              [match]: { ...person, days: { ...days, [todayKey]: nextToday } },
+            });
+          };
+
+          // Last 7 days chain + weekly identity votes
+          const dots = [];
+          let votes = 0;
+          for (let i = 6; i >= 0; i--) {
+            const k = dateKeyOffset(-i);
+            const rec = days[k] || {};
+            let c = HABITS.filter((h) => (rec[h.id] || 0) > 0).length;
+            if (i === 0) c = doneCount;
+            votes += c;
+            const [y, m, dd] = k.split("-").map(Number);
+            dots.push({
+              k, c,
+              w: new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: "narrow" }),
+            });
+          }
+
+          return (
+            <div key={match} style={{
+              background: "#FAFBFC", border: `1px solid ${allDone ? T.leaf : T.line}`,
+              borderRadius: 12, padding: "10px 12px",
+              boxShadow: allDone ? `0 0 0 2px ${T.leaf}22` : "none",
+            }}>
+              <div style={{
+                fontSize: 12.5, fontWeight: 800, color: T.marigoldDeep,
+                textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6,
+                fontFamily: "Inter, sans-serif",
               }}>
-                {item.dueDate === localDateKey() ? "today" : `for ${fmtDateKey(item.dueDate)}`}
-              </span>
-            )}
-          </div>
-        </div>
-        <button
-          onClick={onDelete}
-          aria-label="Delete item"
-          style={{
-            border: "none", background: "transparent", color: T.coral,
-            cursor: "pointer", padding: 4, borderRadius: 8, flexShrink: 0,
-          }}
-        >
-          <Trash2 size={15} />
-        </button>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
-        <ReactionButton count={ups} active={mine === "up"} onClick={() => onReact("up")} />
-        <button
-          onClick={() => setOpen(!open)}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 5,
-            border: `1.5px solid ${T.line}`, background: open ? T.skySoft : "transparent",
-            color: open ? T.sky : T.inkSoft, borderRadius: 999, padding: "4px 10px",
-            cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-          }}
-        >
-          <MessageCircle size={14} />
-          {(item.comments || []).length > 0 ? (item.comments || []).length : "Discuss"}
-        </button>
-      </div>
-
-      {open && (
-        <CommentThread comments={item.comments} me={me} members={members} onAdd={onComment} />
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Generic list tab (groceries / todos / travel) — live synced        */
-/* ------------------------------------------------------------------ */
-function ListTab({ docId, me, members, placeholder, showCheckbox, emptyCopy, withDueDate }) {
-  const [data, save] = useHubDoc(docId);
-  const [draft, setDraft] = useState("");
-  const [dueDraft, setDueDraft] = useState("");
-  const items = data === undefined ? null : (data?.items || []);
-
-  const persist = (next) => save({ items: next });
-
-  const addItem = () => {
-    const t = draft.trim();
-    if (!t || items === null) return;
-    setDraft("");
-    persist([{
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      text: t, author: me, createdAt: Date.now(),
-      done: false, reactions: {}, comments: [],
-      dueDate: withDueDate && dueDraft ? dueDraft : null,
-    }, ...items]);
-  };
-
-  const update = (id, fn) => persist(items.map((it) => (it.id === id ? fn(it) : it)));
-
-  if (items === null) return <Spinner />;
-
-  const active = items.filter((i) => !i.done);
-  const done = items.filter((i) => i.done);
-
-  const renderItem = (it) => (
-    <ItemCard
-      key={it.id} item={it} me={me} members={members} showCheckbox={showCheckbox}
-      onToggleDone={() => update(it.id, (x) => ({ ...x, done: !x.done }))}
-      onReact={() => update(it.id, (x) => {
-        const r = { ...(x.reactions || {}) };
-        if (r[me] === "up") delete r[me]; else r[me] = "up";
-        return { ...x, reactions: r };
-      })}
-      onComment={(text) => update(it.id, (x) => ({
-        ...x, comments: [...(x.comments || []), { author: me, text, ts: Date.now() }],
-      }))}
-      onDelete={() => persist(items.filter((x) => x.id !== it.id))}
-    />
-  );
-
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addItem()}
-          placeholder={placeholder}
-          style={{
-            flex: 1, border: `1.5px solid ${T.line}`, borderRadius: 12,
-            padding: "11px 14px", fontSize: 15, fontFamily: "Inter, sans-serif",
-            outline: "none", background: T.card, color: T.ink,
-          }}
-        />
-        <button
-          onClick={addItem}
-          style={{
-            border: "none", background: T.marigold, color: T.ink,
-            borderRadius: 12, padding: "0 16px", cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 6,
-            fontWeight: 700, fontSize: 14, fontFamily: "Inter, sans-serif",
-          }}
-        >
-          <Plus size={17} /> Add
-        </button>
-      </div>
-
-      {withDueDate && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -8, marginBottom: 16 }}>
-          <span style={{ fontSize: 13, color: T.inkSoft, fontWeight: 600 }}>For which day?</span>
-          <input
-            type="date"
-            value={dueDraft}
-            onChange={(e) => setDueDraft(e.target.value)}
-            style={{
-              border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "6px 10px",
-              fontSize: 14, fontFamily: "Inter, sans-serif", color: T.ink,
-              background: T.card, outline: "none",
-            }}
-          />
-          {dueDraft && (
-            <button
-              onClick={() => setDueDraft("")}
-              style={{
-                border: "none", background: "transparent", color: T.inkSoft,
-                cursor: "pointer", fontSize: 13, fontWeight: 700, padding: "2px 4px",
-                fontFamily: "Inter, sans-serif",
-              }}
-            >
-              clear
-            </button>
-          )}
-          <span style={{ fontSize: 12, color: T.inkSoft }}>(optional)</span>
-        </div>
-      )}
-
-      {items.length === 0 && (
-        <div style={{
-          textAlign: "center", padding: "44px 20px", color: T.inkSoft,
-          fontSize: 14, background: T.card, borderRadius: 14, border: `1px dashed ${T.line}`,
-        }}>
-          {emptyCopy}
-        </div>
-      )}
-
-      {active.map(renderItem)}
-
-      {done.length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{
-            fontSize: 12, fontWeight: 700, color: T.inkSoft,
-            textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8,
-          }}>
-            Done ({done.length})
-          </div>
-          {done.map(renderItem)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Dinner week tab — live synced                                      */
-/* ------------------------------------------------------------------ */
-function DinnerTab({ me, members }) {
-  const [data, save] = useHubDoc("dinners");
-  const [openDay, setOpenDay] = useState(null);
-  const [drafts, setDrafts] = useState({});
-  const week = data === undefined ? null : (data?.days || {});
-
-  if (week === null) return <Spinner />;
-
-  const persist = (next) => save({ days: next });
-  const todayIdx = (new Date().getDay() + 6) % 7;
-
-  return (
-    <div>
-      <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, lineHeight: 1.5 }}>
-        Plan the week's dinners together. Tap a day to set the meal, react, or discuss.
-      </div>
-      {DAYS.map((day, i) => {
-        const d = week[day] || { meal: "", setBy: null, reactions: {}, comments: [] };
-        const isOpen = openDay === day;
-        const ups = Object.values(d.reactions || {}).filter((r) => r === "up").length;
-        const mine = (d.reactions || {})[me];
-        const isToday = i === todayIdx;
-        const saveDay = (fn) => persist({ ...week, [day]: fn(d) });
-
-        return (
-          <div
-            key={day}
-            style={{
-              background: T.card, borderRadius: 14, marginBottom: 10,
-              border: `1px solid ${isToday ? T.marigold : T.line}`,
-              boxShadow: isToday ? `0 0 0 2px ${T.marigold}33` : "none",
-              overflow: "hidden",
-            }}
-          >
-            <button
-              onClick={() => setOpenDay(isOpen ? null : day)}
-              style={{
-                width: "100%", border: "none", background: "transparent",
-                padding: "13px 14px", cursor: "pointer", textAlign: "left",
-                display: "flex", alignItems: "center", gap: 10,
-                fontFamily: "Inter, sans-serif",
-              }}
-            >
-              <div style={{ width: 84, flexShrink: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: isToday ? T.marigoldDeep : T.ink }}>
-                  {day.slice(0, 3)}
-                  {isToday && <span style={{ fontSize: 10, marginLeft: 5, fontWeight: 800, color: T.red }}>TODAY</span>}
-                </div>
+                {label} · {doneCount}/{HABITS.length}
               </div>
-              <div style={{ flex: 1, fontSize: 15, color: d.meal ? T.ink : T.inkSoft, fontWeight: d.meal ? 600 : 400 }}>
-                {d.meal || "Nothing planned yet"}
-              </div>
-              {(d.comments || []).length > 0 && (
-                <span style={{ fontSize: 12, color: T.sky, display: "flex", alignItems: "center", gap: 3 }}>
-                  <MessageCircle size={13} /> {(d.comments || []).length}
-                </span>
-              )}
-              {ups > 0 && <span style={{ fontSize: 12, color: T.leaf }}>👍{ups}</span>}
-              <ChevronDown size={16} color={T.inkSoft} style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
-            </button>
 
-            {isOpen && (
-              <div style={{ padding: "0 14px 14px" }}>
-                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                  <input
-                    value={drafts[day] ?? d.meal}
-                    onChange={(e) => setDrafts({ ...drafts, [day]: e.target.value })}
-                    placeholder="What's for dinner?"
-                    style={{
-                      flex: 1, border: `1.5px solid ${T.line}`, borderRadius: 10,
-                      padding: "8px 11px", fontSize: 14, fontFamily: "Inter, sans-serif",
-                      outline: "none", background: "#FAFBFC", color: T.ink,
-                    }}
-                  />
+              {HABITS.map((h) => {
+                const done = isDone(h);
+                const { streak, grace } = habitStreak(days, h.id, done);
+                const Icon = h.icon;
+                return (
                   <button
-                    onClick={() => {
-                      const meal = (drafts[day] ?? d.meal).trim();
-                      saveDay((x) => ({ ...x, meal, setBy: me }));
-                    }}
+                    key={h.id}
+                    onClick={() => setHabit(h.id, !done)}
                     style={{
-                      border: "none", background: T.ink, color: "#fff", borderRadius: 10,
-                      padding: "0 14px", cursor: "pointer", fontWeight: 700, fontSize: 13,
-                      fontFamily: "Inter, sans-serif",
+                      display: "flex", alignItems: "center", gap: 7, width: "100%",
+                      border: "none", background: "transparent", padding: "4px 0",
+                      cursor: "pointer", fontFamily: "Inter, sans-serif", textAlign: "left",
                     }}
                   >
-                    Set
+                    <span
+                      key={done ? "y" : "n"}
+                      style={{
+                        width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                        border: `2px solid ${done ? T.leaf : T.line}`,
+                        background: done ? T.leaf : "transparent",
+                        color: "#fff", display: "flex", alignItems: "center",
+                        justifyContent: "center", fontSize: 12, fontWeight: 800,
+                        animation: done ? "pop .25s ease" : "none",
+                      }}
+                    >
+                      {done ? "✓" : ""}
+                    </span>
+                    <Icon size={13} color={done ? T.leaf : T.inkSoft} style={{ flexShrink: 0 }} />
+                    <span style={{
+                      fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 0,
+                      color: done ? T.leaf : T.ink,
+                    }}>
+                      {h.label}
+                    </span>
+                    {streak > 0 && (
+                      <span
+                        title={grace ? "Missed yesterday — do it today to keep the streak" : `${streak}-day streak`}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 2,
+                          fontSize: 11, fontWeight: 800,
+                          color: grace ? "#B07E10" : T.leaf,
+                        }}
+                      >
+                        <Flame size={11} />{streak}
+                      </span>
+                    )}
                   </button>
+                );
+              })}
+
+              <div style={{ display: "flex", gap: 5, marginTop: 8 }}>
+                {dots.map((d) => (
+                  <div key={d.k} style={{ textAlign: "center" }}>
+                    <div style={{
+                      width: 10, height: 10, borderRadius: "50%", margin: "0 auto",
+                      background: d.c === HABITS.length ? T.leaf : d.c > 0 ? T.marigold : "transparent",
+                      border: d.c === 0 ? `1.5px solid ${T.line}` : "none",
+                      opacity: d.c > 0 && d.c < HABITS.length ? 0.75 : 1,
+                    }} />
+                    <div style={{ fontSize: 8.5, color: T.inkSoft, marginTop: 2 }}>{d.w}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 6 }}>
+                {votes} {votes === 1 ? "vote" : "votes"} cast this week
+              </div>
+
+              {allDone && (
+                <div style={{
+                  marginTop: 10, background: T.leafSoft, border: `1px solid ${T.leaf}`,
+                  borderRadius: 10, padding: "8px 10px", textAlign: "center",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
+                    {[0, 1, 2].map((i) => (
+                      <Fish key={i} size={18} color={T.marigold}
+                        style={{ animation: `bob 1s ease-in-out ${i * 0.15}s infinite alternate` }} />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: T.leaf, marginTop: 4 }}>
+                    Perfect day!
+                  </div>
                 </div>
-                {d.setBy && d.meal && (
-                  <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 8 }}>
-                    Set by {d.setBy}
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button
+        onClick={() => onGoTab("plan")}
+        style={{
+          marginTop: 10, border: "none", background: "transparent", color: T.marigoldDeep,
+          cursor: "pointer", fontSize: 13, fontWeight: 700, padding: 0,
+          display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "Inter, sans-serif",
+        }}
+      >
+        Run your 3:30 shutdown <ArrowRight size={13} />
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared check row — the green checkbox, the staple of the hub       */
+/* ------------------------------------------------------------------ */
+function CheckRow({ done, label, sub, onToggle, big }) {
+  const box = big ? 26 : 21;
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        display: "flex", alignItems: "flex-start", gap: 9, width: "100%",
+        border: "none", background: "transparent", padding: "5px 0",
+        cursor: "pointer", fontFamily: "Inter, sans-serif", textAlign: "left",
+      }}
+    >
+      <span
+        key={done ? "y" : "n"}
+        style={{
+          width: box, height: box, borderRadius: 7, flexShrink: 0, marginTop: 1,
+          border: `2px solid ${done ? T.leaf : T.line}`,
+          background: done ? T.leaf : "transparent",
+          color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: big ? 15 : 12, fontWeight: 800,
+          animation: done ? "pop .25s ease" : "none",
+        }}
+      >
+        {done ? "✓" : ""}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{
+          display: "block",
+          fontSize: big ? 16 : 14, fontWeight: big ? 800 : 600, lineHeight: 1.35,
+          color: done ? T.leaf : T.ink,
+          textDecoration: done ? "line-through" : "none",
+        }}>
+          {label}
+        </span>
+        {sub && <span style={{ display: "block", fontSize: 12, color: T.inkSoft, marginTop: 1 }}>{sub}</span>}
+      </span>
+    </button>
+  );
+}
+
+const EMPTY_PLAN = {
+  top3: ["", "", ""], done3: [false, false, false], star: 0,
+  blocks: ["", ""], blocksDone: [false, false],
+  workout: "", prep: { inbox: false, calendar: false }, shutdownComplete: false,
+};
+
+/* ------------------------------------------------------------------ */
+/*  Today's Plan — what yesterday's shutdown decided                   */
+/* ------------------------------------------------------------------ */
+function TodayPlanCard({ meMatch, onGoTab }) {
+  const todayKey = localDateKey();
+  const [planDoc, savePlan] = useHubDoc(`plan-${todayKey}`);
+  const [view, setView] = useState(meMatch);
+
+  const card = {
+    background: T.card, borderRadius: 14, padding: "14px 16px",
+    border: `1px solid ${T.line}`, marginBottom: 14,
+  };
+
+  if (planDoc === undefined) {
+    return <div style={card}><SectionTitle>Today's plan</SectionTitle><div style={{ color: T.inkSoft, fontSize: 14 }}>Loading…</div></div>;
+  }
+
+  const p = { ...EMPTY_PLAN, ...((planDoc || {})[view] || {}) };
+  const hasPlan = p.top3.some((t) => t && t.trim());
+  const setPerson = (next) => savePlan({ ...(planDoc || {}), [view]: next });
+
+  const doneCount = p.top3.filter((t, i) => t && t.trim() && p.done3[i]).length;
+  const totalCount = p.top3.filter((t) => t && t.trim()).length;
+
+  const order = [p.star, ...[0, 1, 2].filter((i) => i !== p.star)];
+
+  return (
+    <div style={card}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <SectionTitle>Today's plan</SectionTitle>
+        <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+          {["mike", "tina"].map((m) => (
+            <button
+              key={m}
+              onClick={() => setView(m)}
+              style={{
+                border: `1.5px solid ${view === m ? T.ink : T.line}`,
+                background: view === m ? T.ink : "transparent",
+                color: view === m ? "#fff" : T.inkSoft,
+                borderRadius: 999, padding: "3px 11px", fontSize: 12, fontWeight: 700,
+                cursor: "pointer", fontFamily: "Inter, sans-serif", textTransform: "capitalize",
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!hasPlan ? (
+        <div style={{ padding: "6px 0 2px" }}>
+          <div style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.5, marginBottom: 10 }}>
+            No plan set for today{view !== meMatch ? ` by ${view[0].toUpperCase() + view.slice(1)}` : ""} — the day is deciding itself.
+          </div>
+          {view === meMatch && (
+            <button
+              onClick={() => onGoTab("plan")}
+              style={{
+                border: "none", background: T.marigold, color: T.ink, borderRadius: 10,
+                padding: "9px 16px", cursor: "pointer", fontWeight: 800, fontSize: 13.5,
+                fontFamily: "Inter, sans-serif",
+              }}
+            >
+              Set today's plan now
+            </button>
+          )}
+        </div>
+      ) : (
+        <div>
+          {totalCount > 0 && (
+            <div style={{ fontSize: 12, fontWeight: 700, color: doneCount === totalCount ? T.leaf : T.inkSoft, marginBottom: 6 }}>
+              {doneCount}/{totalCount} priorities done{doneCount === totalCount ? " — day won 🐠" : ""}
+            </div>
+          )}
+          {order.map((i) => {
+            const text = p.top3[i];
+            if (!text || !text.trim()) return null;
+            const isStar = i === p.star;
+            return (
+              <div key={i} style={isStar ? {
+                background: "#FDF6E7", border: `1px solid ${T.marigold}`,
+                borderRadius: 10, padding: "6px 10px 4px", marginBottom: 8,
+              } : { padding: "0 2px" }}>
+                {isStar && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    <Star size={11} fill={T.marigold} color={T.marigold} /> The one that defines today
                   </div>
                 )}
-                <ReactionButton
-                  count={ups} active={mine === "up"}
-                  onClick={() => saveDay((x) => {
-                    const r = { ...(x.reactions || {}) };
-                    if (r[me] === "up") delete r[me]; else r[me] = "up";
-                    return { ...x, reactions: r };
-                  })}
-                />
-                <CommentThread
-                  comments={d.comments} me={me} members={members}
-                  onAdd={(text) => saveDay((x) => ({
-                    ...x, comments: [...(x.comments || []), { author: me, text, ts: Date.now() }],
-                  }))}
+                <CheckRow
+                  big={isStar}
+                  done={p.done3[i]}
+                  label={text}
+                  onToggle={() => {
+                    const done3 = [...p.done3];
+                    done3[i] = !done3[i];
+                    setPerson({ ...p, done3 });
+                  }}
                 />
               </div>
-            )}
+            );
+          })}
+
+          {(p.blocks[0] || p.blocks[1]) && (
+            <div style={{ marginTop: 10, borderTop: `1px dashed ${T.line}`, paddingTop: 8 }}>
+              {p.blocks.map((b, i) => b && (
+                <CheckRow
+                  key={i}
+                  done={p.blocksDone[i]}
+                  label={b}
+                  sub={`Deep block ${i + 1}`}
+                  onToggle={() => {
+                    const blocksDone = [...p.blocksDone];
+                    blocksDone[i] = !blocksDone[i];
+                    setPerson({ ...p, blocksDone });
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {(p.workout || planDoc?.dinner) && (
+            <div style={{ marginTop: 10, borderTop: `1px dashed ${T.line}`, paddingTop: 10, display: "grid", gap: 6 }}>
+              {p.workout && (
+                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, color: T.ink }}>
+                  <Dumbbell size={14} color={T.inkSoft} />
+                  <span><strong>Workout:</strong> {p.workout}</span>
+                </div>
+              )}
+              {planDoc?.dinner && (
+                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, color: T.ink }}>
+                  <UtensilsIcon />
+                  <span><strong>Dinner:</strong> {planDoc.dinner}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UtensilsIcon() {
+  return <Apple size={14} color={T.inkSoft} />;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Plan tab — the 3:30 shutdown ritual                                */
+/* ------------------------------------------------------------------ */
+function PlanTab({ meMatch, meName }) {
+  const [target, setTarget] = useState("tomorrow");
+  const dateKey = target === "today" ? localDateKey() : dateKeyOffset(1);
+  const [planDoc, savePlan] = useHubDoc(`plan-${dateKey}`);
+  const [routineDoc, saveRoutine] = useHubDoc("routine");
+
+  const [top3, setTop3] = useState(["", "", ""]);
+  const [star, setStar] = useState(0);
+  const [blocks, setBlocks] = useState(["", ""]);
+  const [workout, setWorkout] = useState("");
+  const [dinner, setDinner] = useState("");
+  const [prep, setPrep] = useState({ inbox: false, calendar: false });
+  const [completed, setCompleted] = useState(false);
+  const loadedFor = useRef(null);
+
+  useEffect(() => {
+    if (planDoc === undefined) return;
+    if (loadedFor.current === dateKey) return;
+    loadedFor.current = dateKey;
+    const p = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
+    setTop3([...p.top3]);
+    setStar(p.star ?? 0);
+    setBlocks([...p.blocks]);
+    setWorkout(p.workout || "");
+    setPrep({ ...p.prep });
+    setCompleted(!!p.shutdownComplete);
+    setDinner((planDoc || {}).dinner || "");
+  }, [planDoc, dateKey, meMatch]);
+
+  const persist = (overrides = {}) => {
+    const existing = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
+    const person = {
+      ...existing,
+      top3, star, blocks, workout, prep, shutdownComplete: completed,
+      ...overrides.person,
+    };
+    savePlan({
+      ...(planDoc || {}),
+      dinner: overrides.dinner !== undefined ? overrides.dinner : dinner,
+      [meMatch]: person,
+    });
+  };
+
+  const completeShutdown = () => {
+    setCompleted(true);
+    persist({ person: { shutdownComplete: true } });
+    // Running the ritual checks today's Shutdown habit
+    const todayKey = localDateKey();
+    const person = (routineDoc && routineDoc[meMatch]) || {};
+    const days = person.days || {};
+    const today = { ...(days[todayKey] || {}), shutdown: 1 };
+    saveRoutine({ ...(routineDoc || {}), [meMatch]: { ...person, days: { ...days, [todayKey]: today } } });
+  };
+
+  const inputStyle = {
+    width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`,
+    borderRadius: 10, padding: "10px 12px", fontSize: 15, outline: "none",
+    background: T.card, color: T.ink, fontFamily: "Inter, sans-serif",
+  };
+  const labelStyle = {
+    fontSize: 12.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase",
+    letterSpacing: "0.05em", margin: "16px 0 6px", fontFamily: "Inter, sans-serif",
+  };
+  const card = {
+    background: T.card, borderRadius: 14, padding: "16px",
+    border: `1px solid ${T.line}`, marginBottom: 14,
+  };
+
+  const fmtTarget = fmtDateKey ? fmtDateKey(dateKey) : dateKey;
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 20, fontWeight: 800, color: T.ink }}>
+          The 3:30 shutdown
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[["tomorrow", "Tomorrow"], ["today", "Today"]].map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setTarget(v)}
+              style={{
+                border: `1.5px solid ${target === v ? T.ink : T.line}`,
+                background: target === v ? T.ink : "transparent",
+                color: target === v ? "#fff" : T.inkSoft,
+                borderRadius: 999, padding: "4px 12px", fontSize: 12.5, fontWeight: 700,
+                cursor: "pointer", fontFamily: "Inter, sans-serif",
+              }}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, lineHeight: 1.5 }}>
+        Planning <strong style={{ color: T.ink }}>{fmtTarget}</strong>, {meName}. Ten minutes now buys a
+        decided morning and a free evening. Fields save when you tap away.
+      </div>
+
+      <div style={card}>
+        <SectionTitle>Close out today</SectionTitle>
+        <CheckRow
+          done={prep.inbox} label="Inbox cleared" sub="Two-minute replies sent, the rest captured below"
+          onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
+        />
+        <CheckRow
+          done={prep.calendar} label="Calendar reviewed" sub="You know what tomorrow holds"
+          onToggle={() => { const next = { ...prep, calendar: !prep.calendar }; setPrep(next); persist({ person: { prep: next } }); }}
+        />
+      </div>
+
+      <div style={card}>
+        <SectionTitle>Top 3 priorities</SectionTitle>
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
+          Tap the star for the ONE that defines the day.
+        </div>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <button
+              onClick={() => { setStar(i); persist({ person: { star: i } }); }}
+              aria-label={`Make priority ${i + 1} the star`}
+              style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2 }}
+            >
+              <Star size={20} fill={star === i ? T.marigold : "none"} color={star === i ? T.marigold : T.line} />
+            </button>
+            <input
+              value={top3[i]}
+              onChange={(e) => { const next = [...top3]; next[i] = e.target.value; setTop3(next); }}
+              onBlur={() => persist()}
+              placeholder={i === 0 ? "The most important thing" : `Priority ${i + 1}`}
+              style={inputStyle}
+            />
           </div>
-        );
-      })}
+        ))}
+      </div>
+
+      <div style={card}>
+        <SectionTitle>Deep blocks</SectionTitle>
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
+          Name the deliverable, not the topic — "finish X," not "work on X."
+        </div>
+        <div style={labelStyle}>Block 1 (9:00–11:00) will produce…</div>
+        <input
+          value={blocks[0]}
+          onChange={(e) => setBlocks([e.target.value, blocks[1]])}
+          onBlur={() => persist()}
+          placeholder="e.g. Q3 proposal draft sent to client"
+          style={inputStyle}
+        />
+        <div style={labelStyle}>Block 2 (12:30–2:30) will produce…</div>
+        <input
+          value={blocks[1]}
+          onChange={(e) => setBlocks([blocks[0], e.target.value])}
+          onBlur={() => persist()}
+          placeholder="e.g. Retainer report for client B done"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={card}>
+        <SectionTitle>Set up the day</SectionTitle>
+        <div style={labelStyle}>Tomorrow's workout (kills the 5am snooze)</div>
+        <input
+          value={workout}
+          onChange={(e) => setWorkout(e.target.value)}
+          onBlur={() => persist()}
+          placeholder="e.g. 5x5 squats + 20 min bike"
+          style={inputStyle}
+        />
+        <div style={labelStyle}>Family dinner (shared — Tina sees this too)</div>
+        <input
+          value={dinner}
+          onChange={(e) => setDinner(e.target.value)}
+          onBlur={() => persist({ dinner })}
+          placeholder="e.g. Sheet-pan chicken + defrost tonight"
+          style={inputStyle}
+        />
+      </div>
+
+      {completed ? (
+        <div style={{
+          background: T.leafSoft, border: `1px solid ${T.leaf}`, borderRadius: 14,
+          padding: "14px 16px", textAlign: "center",
+        }}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
+            {[0, 1, 2].map((i) => (
+              <Fish key={i} size={20} color={T.marigold}
+                style={{ animation: `bob 1s ease-in-out ${i * 0.15}s infinite alternate` }} />
+            ))}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: T.leaf, marginTop: 6 }}>
+            Shutdown complete — the evening is yours.
+          </div>
+          <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 4 }}>
+            You can still edit anything above; it saves as you go.
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={completeShutdown}
+          style={{
+            width: "100%", border: "none", background: T.marigold, color: T.ink,
+            borderRadius: 14, padding: "15px 0", fontSize: 16, fontWeight: 800,
+            cursor: "pointer", fontFamily: "Inter, sans-serif",
+          }}
+        >
+          Shutdown complete 🐠
+        </button>
+      )}
     </div>
   );
 }
@@ -602,18 +812,15 @@ function DinnerTab({ me, members }) {
 /* ------------------------------------------------------------------ */
 /*  Home page                                                          */
 /* ------------------------------------------------------------------ */
-function HomeTab({ me, members, onGoTab }) {
+function HomeTab({ me, meMatch, members, onGoTab }) {
   const dateKey = localDateKey();
   const todayName = DAYS[(new Date().getDay() + 6) % 7];
 
   const [weather, setWeather] = useState(null);
   const [weatherBusy, setWeatherBusy] = useState(true);
   const [weatherErr, setWeatherErr] = useState("");
-  const [todosDoc] = useHubDoc("todos");
-  const [dinnersDoc] = useHubDoc("dinners");
   const [photoDoc, savePhoto, removePhotoDoc] = useHubDoc(`photo-${dateKey}`);
   const [checkinDoc, saveCheckin] = useHubDoc(`checkin-${dateKey}`);
-  const [workoutDoc, saveWorkout] = useHubDoc(`workout-${dateKey}`);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const [chatDraft, setChatDraft] = useState("");
@@ -621,10 +828,6 @@ function HomeTab({ me, members, onGoTab }) {
   const [replyDraft, setReplyDraft] = useState("");
   const fileInputRef = useRef(null);
 
-  const allOpenTodos = (todosDoc?.items || []).filter((t) => !t.done);
-  // Today's goals: items scheduled for today (or overdue), plus undated items
-  const todos = allOpenTodos.filter((t) => !t.dueDate || t.dueDate <= dateKey);
-  const dinner = dinnersDoc?.days?.[todayName]?.meal || null;
   const checkin = checkinDoc === undefined ? null : (checkinDoc?.messages || []);
   const photo = photoDoc === undefined ? null : photoDoc;
 
@@ -695,6 +898,10 @@ function HomeTab({ me, members, onGoTab }) {
         {greeting}, {me}
       </div>
 
+      <TodayPlanCard meMatch={meMatch} onGoTab={onGoTab} />
+
+      <RoutineCard onGoTab={onGoTab} />
+
       {/* Weather */}
       <div style={{ ...card, background: T.ink, border: "none", color: "#fff" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -734,6 +941,8 @@ function HomeTab({ me, members, onGoTab }) {
           </div>
         )}
       </div>
+
+
 
       {/* Photo of the day */}
       <div style={card}>
@@ -779,109 +988,6 @@ function HomeTab({ me, members, onGoTab }) {
           </div>
         )}
         {photoErr && <div style={{ fontSize: 13, color: T.coral, marginTop: 8 }}>{photoErr}</div>}
-      </div>
-
-      {/* Tonight's dinner */}
-      <div style={card}>
-        <SectionTitle>Dinner tonight</SectionTitle>
-        {dinner ? (
-          <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{dinner}</div>
-        ) : (
-          <div style={{ fontSize: 14, color: T.inkSoft }}>Nothing planned yet for {todayName}.</div>
-        )}
-        <button
-          onClick={() => onGoTab("dinners")}
-          style={{
-            marginTop: 8, border: "none", background: "transparent", color: T.marigoldDeep,
-            cursor: "pointer", fontSize: 13, fontWeight: 700, padding: 0,
-            display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "Inter, sans-serif",
-          }}
-        >
-          Open the week's plan <ArrowRight size={13} />
-        </button>
-      </div>
-
-      {/* Today's goals — his & hers */}
-      <div style={card}>
-        <SectionTitle>Today's goals</SectionTitle>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {[
-            { label: "Mike's Today Goals", match: "mike" },
-            { label: "Tina's Today Goals", match: "tina" },
-          ].map(({ label, match }) => {
-            const mine = todos.filter((t) => (t.author || "").toLowerCase().startsWith(match));
-            return (
-              <div key={match} style={{
-                background: "#FAFBFC", border: `1px solid ${T.line}`,
-                borderRadius: 12, padding: "10px 12px",
-              }}>
-                <div style={{
-                  fontSize: 12.5, fontWeight: 800, color: T.marigoldDeep,
-                  textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8,
-                  fontFamily: "Inter, sans-serif",
-                }}>
-                  {label}
-                </div>
-                {mine.length === 0 ? (
-                  <div style={{ fontSize: 13, color: T.inkSoft }}>Nothing yet today.</div>
-                ) : (
-                  mine.slice(0, 6).map((t) => (
-                    <div key={t.id} style={{
-                      display: "flex", alignItems: "flex-start", gap: 6,
-                      padding: "4px 0", fontSize: 13.5, color: T.ink, lineHeight: 1.35,
-                    }}>
-                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: T.marigold, flexShrink: 0, marginTop: 6 }} />
-                      <span style={{ overflowWrap: "anywhere" }}>{t.text}</span>
-                    </div>
-                  ))
-                )}
-                {mine.length > 6 && (
-                  <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 4 }}>+ {mine.length - 6} more</div>
-                )}
-                {(() => {
-                  const workoutDone = !!(workoutDoc && workoutDoc[match]);
-                  return (
-                    <button
-                      onClick={() => saveWorkout({ ...(workoutDoc || {}), [match]: !workoutDone })}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8, marginTop: 10,
-                        border: "none", background: "transparent", cursor: "pointer",
-                        padding: "6px 0 0", borderTop: `1px dashed ${T.line}`, width: "100%",
-                        fontFamily: "Inter, sans-serif",
-                      }}
-                    >
-                      <span style={{
-                        width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                        border: `2px solid ${workoutDone ? T.leaf : T.line}`,
-                        background: workoutDone ? T.leaf : "transparent",
-                        color: "#fff", display: "flex", alignItems: "center",
-                        justifyContent: "center", fontSize: 12, fontWeight: 800,
-                      }}>
-                        {workoutDone ? "✓" : ""}
-                      </span>
-                      <span style={{
-                        fontSize: 13.5, fontWeight: 800,
-                        color: workoutDone ? T.leaf : T.ink,
-                      }}>
-                        Workout!
-                      </span>
-                    </button>
-                  );
-                })()}
-              </div>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => onGoTab("todos")}
-          style={{
-            marginTop: 10, border: "none", background: "transparent", color: T.marigoldDeep,
-            cursor: "pointer", fontSize: 13, fontWeight: 700, padding: 0,
-            display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "Inter, sans-serif",
-          }}
-        >
-          See all to-dos <ArrowRight size={13} />
-        </button>
       </div>
 
       {/* Daily check-in */}
@@ -1227,11 +1333,8 @@ function ProfileSetup({ members, onDone }) {
 /*  Tabs + App                                                         */
 /* ------------------------------------------------------------------ */
 const TABS = [
-  { id: "home", label: "Home", icon: Fish },
-  { id: "grocery", label: "Groceries", icon: ShoppingCart },
-  { id: "dinners", label: "Dinners", icon: UtensilsCrossed },
-  { id: "todos", label: "To-dos", icon: CheckSquare },
-  { id: "travel", label: "Bucket list", icon: Plane },
+  { id: "home", label: "Today", icon: Fish },
+  { id: "plan", label: "Plan", icon: ClipboardList },
 ];
 
 function NotConfigured() {
@@ -1279,6 +1382,8 @@ export default function App() {
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `@keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pop { 0% { transform: scale(.5); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+      @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
       * { -webkit-tap-highlight-color: transparent; }
       button:focus-visible, input:focus-visible { outline: 2px solid ${T.sky}; outline-offset: 2px; }`;
     document.head.appendChild(style);
@@ -1311,6 +1416,7 @@ export default function App() {
   if (!profile) return <ProfileSetup members={members} onDone={setProfile} />;
 
   const me = profile.name;
+  const meMatch = me.toLowerCase().startsWith("tina") ? "tina" : "mike";
 
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
@@ -1377,29 +1483,8 @@ export default function App() {
 
       {/* Body */}
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 16px 60px" }}>
-        {tab === "home" && <HomeTab me={me} members={members} onGoTab={setTab} />}
-        {tab === "grocery" && (
-          <ListTab
-            docId="grocery" me={me} members={members} showCheckbox
-            placeholder="Add a grocery item… (e.g. diapers, size 3)"
-            emptyCopy="The list is empty. Add the first item — someone always needs more milk."
-          />
-        )}
-        {tab === "dinners" && <DinnerTab me={me} members={members} />}
-        {tab === "todos" && (
-          <ListTab
-            docId="todos" me={me} members={members} showCheckbox
-            placeholder="Add a to-do… (e.g. book 6-month checkup)"
-            emptyCopy="No to-dos yet. Enjoy it while it lasts."
-          />
-        )}
-        {tab === "travel" && (
-          <ListTab
-            docId="travel" me={me} members={members} showCheckbox={false}
-            placeholder="Add a dream destination…"
-            emptyCopy="Where to first? Add a place and let the votes decide."
-          />
-        )}
+        {tab === "home" && <HomeTab me={me} meMatch={meMatch} members={members} onGoTab={setTab} />}
+        {tab === "plan" && <PlanTab meMatch={meMatch} meName={me} />}
       </div>
     </div>
   );
