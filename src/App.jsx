@@ -562,6 +562,7 @@ function AnchorEditor({ items, onSave }) {
 
 /* Multi-line workout editor: one input per exercise / interval */
 function WorkoutLines({ lines, setLines, onBlur, placeholder }) {
+  const refs = useRef([]);
   const inputStyle = {
     width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`,
     borderRadius: 10, padding: "9px 11px", fontSize: 14.5, outline: "none",
@@ -572,9 +573,19 @@ function WorkoutLines({ lines, setLines, onBlur, placeholder }) {
       {lines.map((l, i) => (
         <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 26px", gap: 6, marginBottom: 6 }}>
           <input
+            ref={(el) => { refs.current[i] = el; }}
             value={l}
             onChange={(e) => { const n = [...lines]; n[i] = e.target.value; setLines(n); }}
             onBlur={onBlur}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const n = [...lines];
+                n.splice(i + 1, 0, "");
+                setLines(n);
+                setTimeout(() => { if (refs.current[i + 1]) refs.current[i + 1].focus(); }, 50);
+              }
+            }}
             placeholder={i === 0 ? placeholder : `Exercise ${i + 1}`}
             style={inputStyle}
           />
@@ -894,6 +905,94 @@ function TodaySchedule({ meMatch, onGoTab }) {
             ))}
           </div>
           <div style={{ fontSize: 13, fontWeight: 800, color: T.leaf, marginTop: 4 }}>Perfect day. Every box.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tomorrow's snapshot — what's already been decided                  */
+/* ------------------------------------------------------------------ */
+function TomorrowSnapshot({ meMatch, onGoTab }) {
+  const tKey = dateKeyOffset(1);
+  const [planDoc] = useHubDoc(`plan-${tKey}`);
+
+  const card = {
+    background: T.card, borderRadius: 14, padding: "14px 16px",
+    border: `1px solid ${T.line}`, marginBottom: 14,
+  };
+
+  if (planDoc === undefined) return null;
+
+  const p = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
+  const w1 = (p.w1 || []).filter((l) => l && l.trim());
+  const w2 = (p.w2 || []).filter((l) => l && l.trim());
+  const fun = (p.fun || []).filter((l) => l && l.trim());
+  const tops = p.top3.map((t, i) => ({ t, i })).filter((x) => x.t && x.t.trim());
+  const blocks = p.blocks.filter((b) => b && b.trim());
+  const dinner = (planDoc || {}).dinner;
+  const any = w1.length || w2.length || fun.length || tops.length || blocks.length || dinner;
+
+  const Row = ({ label, children }) => (
+    <div style={{ display: "grid", gridTemplateColumns: "84px 1fr", gap: 8, padding: "4px 0", alignItems: "start" }}>
+      <span style={{ fontSize: 10.5, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.05em", paddingTop: 2 }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.45 }}>{children}</span>
+    </div>
+  );
+
+  return (
+    <div style={card}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <SectionTitle>Tomorrow's snapshot — {weekdayOf(1)}</SectionTitle>
+        {p.shutdownComplete && (
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: T.leaf, marginBottom: 10 }}>Shutdown done ✓</span>
+        )}
+      </div>
+      {!any ? (
+        <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5 }}>
+          Nothing planned yet.{" "}
+          <button
+            onClick={() => onGoTab("plan")}
+            style={{ border: "none", background: "transparent", color: T.marigoldDeep, cursor: "pointer", fontWeight: 800, padding: 0, textDecoration: "underline", fontFamily: "Inter, sans-serif", fontSize: 13.5 }}
+          >
+            Run tonight's shutdown
+          </button>{" "}
+          and tomorrow shows up here.
+        </div>
+      ) : (
+        <div>
+          {tops.length > 0 && (
+            <Row label="Top 3">
+              {[p.star, ...tops.map((x) => x.i).filter((i) => i !== p.star)]
+                .filter((i) => p.top3[i] && p.top3[i].trim())
+                .map((i, k) => (
+                  <span key={i} style={{ display: "block", fontWeight: i === p.star ? 800 : 500 }}>
+                    {i === p.star && <Star size={11} fill={T.marigold} color={T.marigold} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
+                    {p.top3[i]}
+                  </span>
+                ))}
+            </Row>
+          )}
+          {blocks.length > 0 && (
+            <Row label="Deep blocks">
+              {blocks.map((b, i) => <span key={i} style={{ display: "block" }}>{b}</span>)}
+            </Row>
+          )}
+          {fun.length > 0 && (
+            <Row label="Plans">
+              {fun.map((f, i) => <span key={i} style={{ display: "block" }}>{f}</span>)}
+            </Row>
+          )}
+          {w1.length > 0 && (
+            <Row label="Workout #1">{w1.join(" · ")}</Row>
+          )}
+          {w2.length > 0 && (
+            <Row label="Workout #2">{w2.join(" · ")}</Row>
+          )}
+          {dinner && <Row label="Dinner">{dinner}</Row>}
         </div>
       )}
     </div>
@@ -1266,6 +1365,8 @@ function HomeTab({ me, meMatch, members, onGoTab, wide }) {
       <div style={wide ? { display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 16, alignItems: "start" } : undefined}>
       <div>
       <TodaySchedule meMatch={meMatch} onGoTab={onGoTab} />
+
+      <TomorrowSnapshot meMatch={meMatch} onGoTab={onGoTab} />
 
       <RoutineCard onGoTab={onGoTab} />
       </div>
