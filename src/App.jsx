@@ -4,7 +4,7 @@ import {
   ThumbsUp, MessageCircle, Trash2, Send, Loader2, ChevronDown,
   Fish, RefreshCw, Camera, CornerDownRight, Sun, ArrowRight, LogOut,
   Dumbbell, Droplet, Apple, Target, Moon, Heart, Flame,
-  Power, ClipboardList, Star,
+  Power, ClipboardList, Star, Printer, Wallet, KeyRound, ExternalLink,
 } from "lucide-react";
 import { auth, db, configured } from "./lib/firebase.js";
 import * as appConfig from "./firebase-config.js";
@@ -520,7 +520,7 @@ async function ensureGToken(interactive) {
   return null;
 }
 
-function CalendarCard({ dateKey, title }) {
+function CalendarCard({ dateKey, title, bare }) {
   const [state, setState] = useState({ status: "loading", events: [] });
 
   const load = useCallback(async (interactive) => {
@@ -554,14 +554,14 @@ function CalendarCard({ dateKey, title }) {
 
   if (state.status === "unconfigured") return null;
 
-  const card = {
+  const card = bare ? {} : {
     background: T.card, borderRadius: 14, padding: "14px 16px",
     border: `1px solid ${T.line}`, marginBottom: 14,
   };
 
   return (
     <div style={card}>
-      <SectionTitle>{title}</SectionTitle>
+      {!bare && <SectionTitle>{title}</SectionTitle>}
       {state.status === "loading" && (
         <div style={{ color: T.inkSoft, fontSize: 13.5 }}>Checking the calendar…</div>
       )}
@@ -1006,7 +1006,7 @@ function TomorrowSnapshot({ meMatch, onGoTab }) {
 /* ------------------------------------------------------------------ */
 /*  Plan tab — the 3:30 shutdown, in the order of the day it builds    */
 /* ------------------------------------------------------------------ */
-function PlanTab({ meMatch, meName }) {
+function PlanTab({ meMatch, meName, wide }) {
   const [offset, setOffset] = useState(1); // 1 = tomorrow … 5 = four days after
   const dateKey = dateKeyOffset(offset);
   const [planDoc, savePlan] = useHubDoc(`plan-${dateKey}`);
@@ -1081,26 +1081,45 @@ function PlanTab({ meMatch, meName }) {
 
   const inputStyle = {
     width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`,
-    borderRadius: 10, padding: "10px 12px", fontSize: 15, outline: "none",
-    background: T.card, color: T.ink, fontFamily: "Inter, sans-serif",
+    borderRadius: 11, padding: "12px 14px", fontSize: 16, outline: "none",
+    background: "#FFFFFF", color: T.ink, fontFamily: "Inter, sans-serif",
   };
-  const card = {
-    background: T.card, borderRadius: 14, padding: "16px",
-    border: `1px solid ${T.line}`, marginBottom: 14,
-  };
-  const timeTag = (t) => (
-    <span style={{ fontSize: 11, fontWeight: 800, color: T.marigoldDeep, marginRight: 6 }}>{t}</span>
+
+  /* Section card: white, accent left bar, generous padding */
+  const psec = (accent) => ({
+    background: T.card, borderRadius: 16, padding: "18px 20px",
+    border: `1px solid ${T.line}`, borderLeft: `5px solid ${accent}`,
+    marginBottom: wide ? 0 : 14,
+  });
+  const PlanHead = ({ n, accent, time, children }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+      <span style={{
+        width: 24, height: 24, borderRadius: "50%", background: accent, color: "#fff",
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        fontSize: 12.5, fontWeight: 800, fontFamily: "Inter, sans-serif", flexShrink: 0,
+      }}>{n}</span>
+      <span style={{
+        fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 17.5, fontWeight: 800, color: T.ink,
+      }}>{children}</span>
+      {time && <span style={{ fontSize: 11.5, fontWeight: 800, color: accent, marginLeft: "auto" }}>{time}</span>}
+    </div>
   );
+  const noteS = { fontSize: 13, color: T.inkSoft, marginTop: -4, marginBottom: 12, lineHeight: 1.45 };
+  const labelS = {
+    fontSize: 12.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase",
+    letterSpacing: "0.05em", margin: "14px 0 6px", fontFamily: "Inter, sans-serif",
+  };
 
   const ready = planDoc !== undefined && hydratedKey === dateKey;
+  const span2 = wide ? { gridColumn: "1 / -1" } : {};
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 20, fontWeight: 800, color: T.ink }}>
+        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 24, fontWeight: 800, color: T.ink }}>
           The 3:30 shutdown
         </div>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {[1, 2, 3, 4, 5].map((o) => (
             <button
               key={o}
@@ -1109,161 +1128,168 @@ function PlanTab({ meMatch, meName }) {
                 border: `1.5px solid ${offset === o ? T.ink : T.line}`,
                 background: offset === o ? T.ink : "transparent",
                 color: offset === o ? "#fff" : T.inkSoft,
-                borderRadius: 999, padding: "4px 11px", fontSize: 12.5, fontWeight: 700,
+                borderRadius: 999, padding: "5px 13px", fontSize: 13, fontWeight: 700,
                 cursor: "pointer", fontFamily: "Inter, sans-serif",
               }}
             >
               {weekdayShort(o)}
             </button>
           ))}
+          <button
+            onClick={() => window.print()}
+            title="Print this day's plan"
+            style={{
+              border: `1.5px solid ${T.line}`, background: T.card, color: T.ink,
+              borderRadius: 999, padding: "5px 13px", fontSize: 13, fontWeight: 700,
+              cursor: "pointer", fontFamily: "Inter, sans-serif",
+              display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 6,
+            }}
+          >
+            <Printer size={14} /> Print
+          </button>
         </div>
       </div>
-      <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 13.5, color: T.inkSoft, marginBottom: 16, lineHeight: 1.5 }}>
         Planning <strong style={{ color: T.ink }}>{weekdayOf(offset)}</strong> ({fmtDateKey(dateKey)}), {meName}.
         Ten minutes now buys a decided morning. Fields save when you tap away.
       </div>
 
-      {meMatch === "mike" && (
-        <CalendarCard dateKey={dateKey} title={`On the calendar — ${weekdayOf(offset)}`} />
-      )}
-
       {!ready ? (
         <div style={{
-          background: T.card, borderRadius: 14, padding: "40px 16px", border: `1px solid ${T.line}`,
+          background: T.card, borderRadius: 16, padding: "48px 16px", border: `1px solid ${T.line}`,
           display: "flex", justifyContent: "center", color: T.inkSoft,
         }}>
           <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
         </div>
       ) : (
       <>
-      {/* Step 0 — about TODAY (skip on weekends: no work to close) */}
-      {!todayWeekend && (
-      <div style={card}>
-        <SectionTitle>Close out today</SectionTitle>
-        <CheckRow
-          done={prep.inbox} label="Inbox cleared" sub="Two-minute replies sent, the rest captured below"
-          onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
-        />
-        <CheckRow
-          done={prep.calendar} label="Calendar reviewed" sub="You know what tomorrow holds"
-          onToggle={() => { const next = { ...prep, calendar: !prep.calendar }; setPrep(next); persist({ person: { prep: next } }); }}
-        />
-      </div>
-      )}
+      <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" } : undefined}>
 
-      {/* 5:00 AM — workout #1 */}
-      <div style={card}>
-        <SectionTitle>{timeTag("5:00 AM")} Workout #1</SectionTitle>
-        <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
-          Written down tonight = no 5am decisions. One line per exercise or interval.
-        </div>
-        <WorkoutLines lines={w1} setLines={setW1} onBlur={() => persist()} placeholder="e.g. 5x5 back squat" />
-      </div>
-
-      {/* The standing anchors */}
-      <div style={card}>
-        <SectionTitle>Daily anchors</SectionTitle>
-        <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
-          These repeat every day and appear on the Today list automatically.
-        </div>
-        <AnchorEditor items={anchors} onSave={saveAnchors} />
-      </div>
-
-      {/* Weekend — plans & family fun */}
-      {targetWeekend && (
-        <div style={card}>
-          <SectionTitle>{timeTag("Daytime")} Plans &amp; family fun</SectionTitle>
-          <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
-            What's happening {weekdayOf(offset)}? One line each — outings, projects, or just "backyard morning".
-          </div>
-          <WorkoutLines lines={fun} setLines={setFun} onBlur={() => persist()} placeholder="e.g. Farmers market + playground" />
-        </div>
-      )}
-
-      {/* 9:00–3:30 — priorities (weekdays) */}
-      {!targetWeekend && (
-      <div style={card}>
-        <SectionTitle>{timeTag("9:00–3:30")} Top 3 priorities</SectionTitle>
-        <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
-          Tap the star for the ONE that defines the day.
-        </div>
-        {[0, 1, 2].map((i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <button
-              onClick={() => { setStar(i); persist({ person: { star: i } }); }}
-              aria-label={`Make priority ${i + 1} the star`}
-              style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2 }}
-            >
-              <Star size={20} fill={star === i ? T.marigold : "none"} color={star === i ? T.marigold : T.line} />
-            </button>
-            <input
-              value={top3[i]}
-              onChange={(e) => { const next = [...top3]; next[i] = e.target.value; setTop3(next); }}
-              onBlur={() => persist()}
-              placeholder={i === 0 ? "The most important thing" : `Priority ${i + 1}`}
-              style={inputStyle}
+        {/* 1 · Close out today (weekdays) */}
+        {!todayWeekend && (
+          <div style={psec(T.ink)}>
+            <PlanHead n="1" accent={T.ink} time="NOW">Close out today</PlanHead>
+            <CheckRow
+              done={prep.inbox} label="Inbox cleared" sub="Two-minute replies sent, the rest captured below"
+              onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
+            />
+            <CheckRow
+              done={prep.calendar} label="Calendar reviewed" sub="You know what tomorrow holds"
+              onToggle={() => { const next = { ...prep, calendar: !prep.calendar }; setPrep(next); persist({ person: { prep: next } }); }}
             />
           </div>
-        ))}
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 6px" }}>
-          Deep block 1 will produce…
-        </div>
-        <input
-          value={blocks[0]}
-          onChange={(e) => setBlocks([e.target.value, blocks[1]])}
-          onBlur={() => persist()}
-          placeholder="e.g. Q3 proposal draft sent to client"
-          style={inputStyle}
-        />
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 6px" }}>
-          Deep block 2 will produce…
-        </div>
-        <input
-          value={blocks[1]}
-          onChange={(e) => setBlocks([blocks[0], e.target.value])}
-          onBlur={() => persist()}
-          placeholder="e.g. Retainer report for client B done"
-          style={inputStyle}
-        />
-      </div>
-      )}
+        )}
 
-      {/* 3:30 PM — wrap up (standing, weekdays) */}
-      {!targetWeekend && (
-      <div style={card}>
-        <SectionTitle>{timeTag("3:30 PM")} Wrap up &amp; set up</SectionTitle>
-        <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
-          Standing every day — edit if the ritual changes.
+        {/* 2 · Calendar for the target day (Mike) */}
+        {meMatch === "mike" && (
+          <div style={psec("#33608A")}>
+            <PlanHead n="2" accent="#33608A">On the calendar — {weekdayOf(offset)}</PlanHead>
+            <CalendarCard dateKey={dateKey} title="" bare />
+          </div>
+        )}
+
+        {/* 3 · Workout #1 */}
+        <div style={psec(T.leaf)}>
+          <PlanHead n="3" accent={T.leaf} time="5:00 AM">Workout #1</PlanHead>
+          <div style={noteS}>Written down tonight = no 5am decisions. Enter jumps to the next line.</div>
+          <WorkoutLines lines={w1} setLines={setW1} onBlur={() => persist()} placeholder="e.g. 5x5 back squat" />
         </div>
-        <AnchorEditor items={wrapup} onSave={saveWrapup} />
-      </div>
-      )}
 
-      {/* 4:00 PM — workout #2 */}
-      <div style={card}>
-        <SectionTitle>{timeTag("4:00 PM")} Workout #2</SectionTitle>
-        <WorkoutLines lines={w2} setLines={setW2} onBlur={() => persist()} placeholder="e.g. 20 min bike + core" />
-      </div>
-
-      {/* Dinner */}
-      <div style={card}>
-        <SectionTitle>{timeTag("4:45 PM")} Family dinner</SectionTitle>
-        <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: -4, marginBottom: 10 }}>
-          Shared — Tina sees this too. Note any prep to do tonight.
+        {/* 4 · Daily anchors */}
+        <div style={psec(T.inkSoft)}>
+          <PlanHead n="4" accent={T.inkSoft}>Daily anchors</PlanHead>
+          <div style={noteS}>These repeat every day and appear on the Today list automatically.</div>
+          <AnchorEditor items={anchors} onSave={saveAnchors} />
         </div>
-        <input
-          value={dinner}
-          onChange={(e) => setDinner(e.target.value)}
-          onBlur={() => persist({ dinner })}
-          placeholder="e.g. Sheet-pan chicken — defrost tonight"
-          style={inputStyle}
-        />
+
+        {/* 5 · Priorities (weekdays) or Fun (weekends) — full width */}
+        {targetWeekend ? (
+          <div style={{ ...psec(T.marigold), ...span2, background: "#FFFDF8" }}>
+            <PlanHead n="5" accent={T.marigold} time="DAYTIME">Plans &amp; family fun</PlanHead>
+            <div style={noteS}>What's happening {weekdayOf(offset)}? One line each — outings, projects, or just "backyard morning".</div>
+            <WorkoutLines lines={fun} setLines={setFun} onBlur={() => persist()} placeholder="e.g. Farmers market + playground" />
+          </div>
+        ) : (
+          <div style={{ ...psec(T.marigold), ...span2, background: "#FFFDF8" }}>
+            <PlanHead n="5" accent={T.marigold} time="9:00–3:30">Top 3 priorities</PlanHead>
+            <div style={noteS}>Tap the star for the ONE that defines the day.</div>
+            <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" } : undefined}>
+              <div>
+                {[0, 1, 2].map((i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <button
+                      onClick={() => { setStar(i); persist({ person: { star: i } }); }}
+                      aria-label={`Make priority ${i + 1} the star`}
+                      style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2 }}
+                    >
+                      <Star size={22} fill={star === i ? T.marigold : "none"} color={star === i ? T.marigold : T.line} />
+                    </button>
+                    <input
+                      value={top3[i]}
+                      onChange={(e) => { const next = [...top3]; next[i] = e.target.value; setTop3(next); }}
+                      onBlur={() => persist()}
+                      placeholder={i === 0 ? "The most important thing" : `Priority ${i + 1}`}
+                      style={inputStyle}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={{ ...labelS, marginTop: wide ? 0 : 14 }}>Deep block 1 will produce…</div>
+                <input
+                  value={blocks[0]}
+                  onChange={(e) => setBlocks([e.target.value, blocks[1]])}
+                  onBlur={() => persist()}
+                  placeholder="e.g. Q3 proposal draft sent to client"
+                  style={inputStyle}
+                />
+                <div style={labelS}>Deep block 2 will produce…</div>
+                <input
+                  value={blocks[1]}
+                  onChange={(e) => setBlocks([blocks[0], e.target.value])}
+                  onBlur={() => persist()}
+                  placeholder="e.g. Retainer report for client B done"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 6 · Wrap up (weekdays) */}
+        {!targetWeekend && (
+          <div style={psec(T.ink)}>
+            <PlanHead n="6" accent={T.ink} time="3:30 PM">Wrap up &amp; set up</PlanHead>
+            <div style={noteS}>Standing every day — edit if the ritual changes.</div>
+            <AnchorEditor items={wrapup} onSave={saveWrapup} />
+          </div>
+        )}
+
+        {/* 7 · Workout #2 */}
+        <div style={psec(T.leaf)}>
+          <PlanHead n="7" accent={T.leaf} time="4:00 PM">Workout #2</PlanHead>
+          <WorkoutLines lines={w2} setLines={setW2} onBlur={() => persist()} placeholder="e.g. 20 min bike + core" />
+        </div>
+
+        {/* 8 · Dinner — full width */}
+        <div style={{ ...psec(T.coral), ...span2 }}>
+          <PlanHead n="8" accent={T.coral} time="4:45 PM">Family dinner</PlanHead>
+          <div style={noteS}>Shared — Tina sees this too. Note any prep to do tonight.</div>
+          <input
+            value={dinner}
+            onChange={(e) => setDinner(e.target.value)}
+            onBlur={() => persist({ dinner })}
+            placeholder="e.g. Sheet-pan chicken — defrost tonight"
+            style={inputStyle}
+          />
+        </div>
       </div>
 
+      <div style={{ marginTop: 16 }}>
       {completed ? (
         <div style={{
-          background: T.leafSoft, border: `1px solid ${T.leaf}`, borderRadius: 14,
-          padding: "14px 16px", textAlign: "center",
+          background: T.leafSoft, border: `1px solid ${T.leaf}`, borderRadius: 16,
+          padding: "16px", textAlign: "center",
         }}>
           <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
             {[0, 1, 2].map((i) => (
@@ -1271,11 +1297,11 @@ function PlanTab({ meMatch, meName }) {
                 style={{ animation: `bob 1s ease-in-out ${i * 0.15}s infinite alternate` }} />
             ))}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: T.leaf, marginTop: 6 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 800, color: T.leaf, marginTop: 6 }}>
             Shutdown complete — the evening is yours.
           </div>
           <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 4 }}>
-            You can still edit anything above; it saves as you go.
+            You can still edit anything above; it saves as you go. Hit Print for the paper copy.
           </div>
         </div>
       ) : (
@@ -1283,15 +1309,23 @@ function PlanTab({ meMatch, meName }) {
           onClick={completeShutdown}
           style={{
             width: "100%", border: "none", background: T.marigold, color: T.ink,
-            borderRadius: 14, padding: "15px 0", fontSize: 16, fontWeight: 800,
+            borderRadius: 16, padding: "17px 0", fontSize: 17, fontWeight: 800,
             cursor: "pointer", fontFamily: "Inter, sans-serif",
           }}
         >
           Shutdown complete 🐠
         </button>
       )}
+      </div>
       </>
       )}
+
+      <PrintSheet
+        dateKey={dateKey} weekend={targetWeekend}
+        anchors={anchors} wrapup={wrapup}
+        top3={top3} star={star} blocks={blocks}
+        w1={w1} w2={w2} fun={fun} dinner={dinner}
+      />
     </div>
   );
 }
@@ -1827,12 +1861,383 @@ function ProfileSetup({ members, onDone }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Printable daily plan sheet (hidden on screen, shown when printing) */
+/* ------------------------------------------------------------------ */
+function PrintSheet({ dateKey, weekend, anchors, wrapup, top3, star, blocks, w1, w2, fun, dinner }) {
+  const box = {
+    display: "inline-block", width: 12, height: 12, border: "1.4px solid #003157",
+    borderRadius: 3, marginRight: 9, verticalAlign: "-2px", flexShrink: 0,
+  };
+  const timeS = { display: "inline-block", width: 62, fontSize: 10, fontWeight: 800, color: "#9C721E" };
+  const rowS = { padding: "3.5px 0", fontSize: 12, color: "#003157", fontFamily: "Arial, sans-serif" };
+  const line = (extra) => <span style={{ display: "inline-block", borderBottom: "1px solid #C9CFD6", minWidth: extra || 300 }}>&nbsp;</span>;
+  const Row = ({ t, children }) => (
+    <div style={rowS}><span style={timeS}>{t}</span><span style={box} />{children}</div>
+  );
+  const Sub = ({ children }) => (
+    <div style={{ ...rowS, paddingLeft: 62 }}><span style={box} />{children}</div>
+  );
+  const Head = ({ children }) => (
+    <div style={{ fontSize: 9.5, fontWeight: 800, color: "#5F6B78", letterSpacing: "0.06em", margin: "8px 0 2px 62px", fontFamily: "Arial, sans-serif" }}>{children}</div>
+  );
+
+  const cleanW1 = (w1 || []).filter((l) => l && l.trim());
+  const cleanW2 = (w2 || []).filter((l) => l && l.trim());
+  const cleanFun = (fun || []).filter((l) => l && l.trim());
+  const starFirst = [star, ...[0, 1, 2].filter((i) => i !== star)].filter((i) => top3[i] && top3[i].trim());
+
+  return (
+    <div id="print-sheet" style={{ maxWidth: 660, margin: "0 auto", padding: "8px 6px" }}>
+      <div style={{ background: "#003157", borderRadius: 10, padding: "14px 18px", marginBottom: 12 }}>
+        <div style={{ color: "#fff", fontSize: 19, fontWeight: 800, fontFamily: "Arial, sans-serif" }}>
+          🐠 Fisher Family Hub — Daily Plan
+        </div>
+        <div style={{ color: "#A8BACB", fontSize: 10.5, marginTop: 3, fontFamily: "Arial, sans-serif" }}>
+          {weekdayOf(0) === fmtDateKey(dateKey).split(",")[0] ? "" : ""}{fmtDateKey(dateKey)} · every check is a vote for the person you're becoming
+        </div>
+      </div>
+
+      <Row t="4:45 AM">Wake up — no snooze, feet on the floor, lights on</Row>
+      {cleanW1.length > 0 && <Head>WORKOUT #1 (5:00 AM)</Head>}
+      {cleanW1.map((l, i) => <Sub key={i}>{l}</Sub>)}
+      {anchors.map((a, i) => <Row key={i} t={a.t}>{a.label}</Row>)}
+
+      {!weekend && (
+        <>
+          <Head>TOP 3 PRIORITIES (9:00–3:30) — ★ defines the day</Head>
+          {starFirst.length === 0 && <Sub>{line(420)}</Sub>}
+          {starFirst.map((i) => (
+            <Sub key={i}>{i === star ? <strong>★ {top3[i]}</strong> : top3[i]}</Sub>
+          ))}
+          {(blocks[0] || blocks[1]) && <Head>DEEP BLOCKS</Head>}
+          {blocks.map((b, i) => b && b.trim() && <Sub key={i}><em>Block {i + 1}:</em>&nbsp;{b}</Sub>)}
+          {wrapup.map((a, i) => <Row key={"wu" + i} t={a.t}>{a.label}</Row>)}
+        </>
+      )}
+      {weekend && cleanFun.length > 0 && (
+        <>
+          <Head>PLANS &amp; FAMILY FUN</Head>
+          {cleanFun.map((l, i) => <Sub key={i}>{l}</Sub>)}
+        </>
+      )}
+
+      {cleanW2.length > 0 && <Head>WORKOUT #2 (4:00 PM)</Head>}
+      {cleanW2.map((l, i) => <Sub key={i}>{l}</Sub>)}
+
+      <Row t="4:45 PM">Start dinner{dinner ? <>: <strong>{dinner}</strong></> : <>: {line(260)}</>}</Row>
+      <Row t="5:30 PM">Dinner together — kids home by 5:15</Row>
+      <Row t="6:00 PM"><strong>Family time — phone away</strong></Row>
+      <Row t="7:30 PM">Start bedtime routine</Row>
+      <Row t="8:45 PM">Kids asleep — reset house, lay out workout clothes</Row>
+      <Row t="9:15 PM"><strong>In bed</strong> — tomorrow starts tonight</Row>
+      <Row t="9:30 PM">Asleep</Row>
+
+      <div style={{ marginTop: 12, background: "#F4F5F7", borderRadius: 8, padding: "9px 14px", fontSize: 11, fontWeight: 700, color: "#003157", fontFamily: "Arial, sans-serif" }}>
+        Score: {line(36)} % done &nbsp;&nbsp; Streak at 100%: {line(36)} days
+        <span style={{ float: "right", fontWeight: 400, fontStyle: "italic", color: "#5F6B78" }}>Hard stop at 4:00. The evening is yours. 🐠</span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Financials — shell (Phase 1 engine to come)                        */
+/* ------------------------------------------------------------------ */
+const FIN_ENTITIES = [
+  { id: "fin-157", label: "157 King Phillips Path" },
+  { id: "fin-66", label: "66 Telegraph St" },
+  { id: "fin-mfg", label: "Mike Fisher Group" },
+];
+
+function KpiTile({ label, hint }) {
+  return (
+    <div style={{
+      background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px",
+    }}>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: T.line, fontFamily: "'Bricolage Grotesque', sans-serif", margin: "6px 0 2px" }}>—</div>
+      <div style={{ fontSize: 11.5, color: T.inkSoft }}>{hint}</div>
+    </div>
+  );
+}
+
+function FinancialsPage({ sub }) {
+  const entity = FIN_ENTITIES.find((e) => e.id === sub);
+  const card = {
+    background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "18px", marginBottom: 14,
+  };
+
+  if (sub === "fin-expenses") {
+    return (
+      <div>
+        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 22, fontWeight: 800, color: T.ink, marginBottom: 12 }}>
+          Expense Management
+        </div>
+        <div style={card}>
+          <SectionTitle>Coming in Phase 1</SectionTitle>
+          <div style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.65 }}>
+            This is where expense data gets clean. The plan, as designed:
+            monthly import from the <strong style={{ color: T.ink }}>Monarch CSV in Google Sheets</strong>;
+            known recurring expenses (mortgage, insurance, subscriptions — defined once by you, per entity)
+            auto-categorize and <strong style={{ color: T.ink }}>auto-populate the current month before they hit the account</strong>;
+            anything the system doesn't recognize triggers a <strong style={{ color: T.ink }}>one-tap categorization pop-up</strong> —
+            you pick the category once and it remembers the pattern for next time.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (entity) {
+    return (
+      <div>
+        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 22, fontWeight: 800, color: T.ink, marginBottom: 12 }}>
+          {entity.label}
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.6 }}>
+            This entity's dashboard arrives with the Phase 1 engine: revenue, expenses, and net income for{" "}
+            <strong style={{ color: T.ink }}>{entity.label}</strong> by month, its recurring expense schedule,
+            and its contribution to the consolidated Overview.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Overview
+  return (
+    <div>
+      <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 22, fontWeight: 800, color: T.ink, marginBottom: 4 }}>
+        Financial Overview
+      </div>
+      <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14 }}>
+        Consolidated across the household, both properties, and Mike Fisher Group. Layout is live — the Phase 1 data engine fills it in.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <KpiTile label="Revenue · this month" hint="incl. known income not yet landed" />
+        <KpiTile label="Expenses · this month" hint="incl. scheduled fixed expenses" />
+        <KpiTile label="Net income" hint="vs last month" />
+        <KpiTile label="Available to deploy" hint="after committed savings" />
+      </div>
+      <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "18px", marginBottom: 14 }}>
+        <SectionTitle>12-month revenue vs expenses</SectionTitle>
+        <div style={{ height: 160, borderRadius: 10, background: "#FAFBFC", border: `1px dashed ${T.line}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.inkSoft, fontSize: 13 }}>
+          Chart renders here once monthly data exists
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+        <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "18px" }}>
+          <SectionTitle>3-month forecast</SectionTitle>
+          <div style={{ fontSize: 13, color: T.inkSoft, lineHeight: 1.6 }}>
+            Projected from your fixed-expense schedule plus trailing averages of variable spend.
+          </div>
+        </div>
+        <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "18px" }}>
+          <SectionTitle>Debt-to-income</SectionTitle>
+          <div style={{ fontSize: 13, color: T.inkSoft, lineHeight: 1.6 }}>
+            Monthly debt payments ÷ gross income — the ratio your next lender will read first.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Accounts directory — names, URLs, usernames. Never passwords.      */
+/* ------------------------------------------------------------------ */
+function AccountsTab() {
+  const [data, save] = useHubDoc("accounts");
+  const [draft, setDraft] = useState({ name: "", url: "", username: "" });
+  const items = data === undefined ? null : (data?.items || []);
+
+  const inputS = {
+    width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`,
+    borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none",
+    background: T.card, color: T.ink, fontFamily: "Inter, sans-serif",
+  };
+
+  if (items === null) return <Spinner />;
+
+  const persist = (next) => save({ items: next });
+  const addItem = () => {
+    if (!draft.name.trim()) return;
+    persist([...items, { id: `${Date.now()}`, ...draft }]);
+    setDraft({ name: "", url: "", username: "" });
+  };
+  const update = (id, field, value) => persist(items.map((a) => a.id === id ? { ...a, [field]: value } : a));
+
+  return (
+    <div>
+      <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 22, fontWeight: 800, color: T.ink, marginBottom: 8 }}>
+        Accounts
+      </div>
+      <div style={{
+        background: "#FDF6E7", border: `1px solid ${T.marigold}`, borderRadius: 12,
+        padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: T.marigoldDeep, lineHeight: 1.5,
+      }}>
+        By design, no passwords live here — those belong in a real password manager. This is the family map of
+        what exists and where.
+      </div>
+
+      <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8 }}>
+          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Account name" style={inputS} />
+          <input value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} placeholder="URL" style={inputS} />
+          <input value={draft.username} onChange={(e) => setDraft({ ...draft, username: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addItem()} placeholder="Username" style={inputS} />
+          <button onClick={addItem} style={{
+            border: "none", background: T.marigold, color: T.ink, borderRadius: 10,
+            padding: "0 16px", cursor: "pointer", fontWeight: 800, fontSize: 13.5, fontFamily: "Inter, sans-serif",
+          }}>
+            <Plus size={16} />
+          </button>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: T.inkSoft, fontSize: 14, background: T.card, borderRadius: 14, border: `1px dashed ${T.line}` }}>
+          Nothing here yet — add the first account above.
+        </div>
+      ) : (
+        items.map((a) => (
+          <div key={a.id} style={{
+            background: T.card, border: `1px solid ${T.line}`, borderRadius: 12,
+            padding: "10px 12px", marginBottom: 8,
+            display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto", gap: 8, alignItems: "center",
+          }}>
+            <input value={a.name} onChange={(e) => update(a.id, "name", e.target.value)} style={{ ...inputS, fontWeight: 700 }} />
+            <input value={a.url} onChange={(e) => update(a.id, "url", e.target.value)} style={inputS} />
+            <input value={a.username} onChange={(e) => update(a.id, "username", e.target.value)} style={inputS} />
+            {/^https?:\/\//.test(a.url || "") ? (
+              <a href={a.url} target="_blank" rel="noreferrer" style={{ color: T.marigoldDeep, display: "flex" }} title="Open site">
+                <ExternalLink size={16} />
+              </a>
+            ) : <span style={{ width: 16 }} />}
+            <button onClick={() => persist(items.filter((x) => x.id !== a.id))} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 17, fontWeight: 700 }}>×</button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Tabs + App                                                         */
 /* ------------------------------------------------------------------ */
-const TABS = [
-  { id: "home", label: "Today", icon: Fish },
-  { id: "plan", label: "Plan", icon: ClipboardList },
+const NAV = [
+  { id: "home", label: "Home", icon: Fish },
+  { id: "plan", label: "Planning", icon: ClipboardList },
+  {
+    id: "financials", label: "Financials", icon: Wallet, children: [
+      { id: "fin-overview", label: "Overview" },
+      { id: "fin-157", label: "157 King Phillips Path" },
+      { id: "fin-66", label: "66 Telegraph St" },
+      { id: "fin-mfg", label: "Mike Fisher Group" },
+      { id: "fin-expenses", label: "Expense Management" },
+    ],
+  },
+  { id: "accounts", label: "Accounts", icon: KeyRound },
 ];
+
+function NavBar({ tab, setTab, wide }) {
+  const [finOpen, setFinOpen] = useState(false);
+  const isFin = tab.startsWith("fin-");
+
+  return (
+    <div style={{ display: "flex", gap: wide ? 4 : 2, marginTop: 18, position: "relative", flexWrap: "wrap" }}>
+      {NAV.map((item) => {
+        const Icon = item.icon;
+        const active = item.children ? isFin : tab === item.id;
+        const base = {
+          border: "none", cursor: "pointer", background: "transparent",
+          color: active ? "#fff" : "#8FA3B5",
+          padding: wide ? "12px 16px 14px" : "11px 10px 13px",
+          fontSize: wide ? 14.5 : 13, fontWeight: 700, fontFamily: "Inter, sans-serif",
+          display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap",
+          borderBottom: `3px solid ${active ? T.marigold : "transparent"}`,
+          transition: "color .15s ease",
+        };
+
+        if (!item.children) {
+          return (
+            <button key={item.id} onClick={() => { setFinOpen(false); setTab(item.id); }} style={base}>
+              <Icon size={16} />
+              {item.label}
+            </button>
+          );
+        }
+
+        return (
+          <div
+            key={item.id}
+            style={{ position: "relative" }}
+            onMouseEnter={() => wide && setFinOpen(true)}
+            onMouseLeave={() => wide && setFinOpen(false)}
+          >
+            <button
+              onClick={() => {
+                if (wide) { setTab("fin-overview"); setFinOpen(false); }
+                else setFinOpen(!finOpen);
+              }}
+              style={base}
+            >
+              <Icon size={16} />
+              {item.label}
+              <ChevronDown size={13} style={{ transform: finOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+            </button>
+            {finOpen && wide && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, zIndex: 50,
+                background: T.card, border: `1px solid ${T.line}`, borderRadius: 12,
+                boxShadow: "0 10px 30px rgba(0,49,87,0.15)", padding: 6, minWidth: 220,
+              }}>
+                {item.children.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setTab(c.id); setFinOpen(false); }}
+                    style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      border: "none", background: tab === c.id ? T.skySoft : "transparent",
+                      color: tab === c.id ? T.ink : T.inkSoft,
+                      borderRadius: 8, padding: "9px 12px", fontSize: 13.5, fontWeight: 600,
+                      cursor: "pointer", fontFamily: "Inter, sans-serif",
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {finOpen && !wide && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, zIndex: 50,
+                background: T.card, border: `1px solid ${T.line}`, borderRadius: 12,
+                boxShadow: "0 10px 30px rgba(0,49,87,0.2)", padding: 6, minWidth: 210,
+              }}>
+                {item.children.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setTab(c.id); setFinOpen(false); }}
+                    style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      border: "none", background: tab === c.id ? T.skySoft : "transparent",
+                      color: tab === c.id ? T.ink : T.inkSoft,
+                      borderRadius: 8, padding: "10px 12px", fontSize: 13.5, fontWeight: 600,
+                      cursor: "pointer", fontFamily: "Inter, sans-serif",
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function NotConfigured() {
   return (
@@ -1882,6 +2287,12 @@ export default function App() {
     style.textContent = `@keyframes spin { to { transform: rotate(360deg); } }
       @keyframes pop { 0% { transform: scale(.5); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
       @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+      #print-sheet { display: none; }
+      @media print {
+        body { background: #fff !important; }
+        #screen-root { display: none !important; }
+        #print-sheet { display: block !important; }
+      }
       * { -webkit-tap-highlight-color: transparent; }
       button:focus-visible, input:focus-visible { outline: 2px solid ${T.sky}; outline-offset: 2px; }`;
     document.head.appendChild(style);
@@ -1915,10 +2326,12 @@ export default function App() {
 
   const me = profile.name;
   const meMatch = me.toLowerCase().startsWith("tina") ? "tina" : "mike";
-  const contentWidth = wide ? (tab === "home" ? 1100 : 760) : 640;
+  const contentWidth = wide
+    ? (tab === "home" || tab.startsWith("fin-") ? 1100 : tab === "plan" ? 1040 : 860)
+    : 640;
 
   return (
-    <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
+    <div id="screen-root" style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
       {/* Header */}
       <div style={{ background: T.ink, padding: "22px 18px 0" }}>
         <div style={{ maxWidth: contentWidth, margin: "0 auto", transition: "max-width .2s ease" }}>
@@ -1951,39 +2364,16 @@ export default function App() {
             </div>
           </div>
 
-          {/* Tab rail */}
-          <div style={{ display: "flex", gap: 6, marginTop: 20, overflowX: "auto" }}>
-            {TABS.map(({ id, label, icon: Icon }) => {
-              const active = tab === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => setTab(id)}
-                  style={{
-                    border: "none", cursor: "pointer",
-                    background: active ? T.canvas : "rgba(255,255,255,0.08)",
-                    color: active ? T.ink : "#B8C4D0",
-                    borderRadius: "12px 12px 0 0", padding: "11px 15px 12px",
-                    fontSize: 13.5, fontWeight: 700, fontFamily: "Inter, sans-serif",
-                    display: "flex", alignItems: "center", gap: 7,
-                    whiteSpace: "nowrap", flexShrink: 0,
-                    transform: active ? "translateY(0)" : "translateY(3px)",
-                    transition: "all .15s ease",
-                  }}
-                >
-                  <Icon size={15} />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          <NavBar tab={tab} setTab={setTab} wide={wide} />
         </div>
       </div>
 
       {/* Body */}
       <div style={{ maxWidth: contentWidth, margin: "0 auto", padding: "20px 16px 60px", transition: "max-width .2s ease" }}>
         {tab === "home" && <HomeTab me={me} meMatch={meMatch} members={members} onGoTab={setTab} wide={wide} />}
-        {tab === "plan" && <PlanTab meMatch={meMatch} meName={me} />}
+        {tab === "plan" && <PlanTab meMatch={meMatch} meName={me} wide={wide} />}
+        {tab.startsWith("fin-") && <FinancialsPage sub={tab} />}
+        {tab === "accounts" && <AccountsTab />}
       </div>
     </div>
   );
