@@ -4,7 +4,7 @@ import {
   ThumbsUp, MessageCircle, Trash2, Send, Loader2, ChevronDown,
   Fish, RefreshCw, Camera, CornerDownRight, Sun, ArrowRight, LogOut,
   Dumbbell, Droplet, Apple, Target, Moon, Heart, Flame,
-  Power, ClipboardList, Star, Printer, Wallet, KeyRound, ExternalLink,
+  Power, ClipboardList, Star, Printer, Wallet, KeyRound, ExternalLink, GripVertical,
 } from "lucide-react";
 import { auth, db, configured } from "./lib/firebase.js";
 import * as appConfig from "./firebase-config.js";
@@ -14,7 +14,7 @@ import { HUB_EMAIL } from "./firebase-config.js";
 import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut,
 } from "firebase/auth";
-import { doc, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 
 /* ------------------------------------------------------------------ */
 /*  Design tokens                                                      */
@@ -295,16 +295,16 @@ const EMPTY_PLAN = {
 /*  To Do List categories (clients green, Realty blue, Personal red)   */
 /* ------------------------------------------------------------------ */
 const TD_CATS = [
-  { id: "bearcamp", label: "Bear Camp Cabin Rentals", color: "#2F6D54" },
-  { id: "panhandle", label: "Panhandle Getaways", color: "#2F6D54" },
-  { id: "killington", label: "The Killington Group", color: "#2F6D54" },
-  { id: "kauai", label: "Kauai Real Estate Group", color: "#2F6D54" },
-  { id: "nashville", label: "Nashville Vacation Homes", color: "#2F6D54" },
-  { id: "haller", label: "Haller Vacation Rentals", color: "#2F6D54" },
-  { id: "newwave", label: "New Wave Vacation Rentals", color: "#2F6D54" },
-  { id: "heights", label: "The Heights Hotel", color: "#2F6D54" },
-  { id: "realty", label: "Realty Advisors", color: "#33608A" },
-  { id: "personal", label: "Personal", color: "#9E3B2F" },
+  { id: "bearcamp", label: "Bear Camp Cabin Rentals", abbr: "BCCR", color: "#2F6D54" },
+  { id: "panhandle", label: "Panhandle Getaways", abbr: "PHG", color: "#2F6D54" },
+  { id: "killington", label: "The Killington Group", abbr: "TKG", color: "#2F6D54" },
+  { id: "kauai", label: "Kauai Real Estate Group", abbr: "KREG", color: "#2F6D54" },
+  { id: "nashville", label: "Nashville Vacation Homes", abbr: "NVH", color: "#2F6D54" },
+  { id: "haller", label: "Haller Vacation Rentals", abbr: "HVR", color: "#2F6D54" },
+  { id: "newwave", label: "New Wave Vacation Rentals", abbr: "NW", color: "#2F6D54" },
+  { id: "heights", label: "The Heights Hotel", abbr: "THH", color: "#2F6D54" },
+  { id: "realty", label: "Realty Advisors", abbr: "RA", color: "#33608A" },
+  { id: "personal", label: "Personal", abbr: "PERS", color: "#9E3B2F" },
 ];
 const catOf = (id) => TD_CATS.find((c) => c.id === id);
 
@@ -1052,6 +1052,7 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
   const [prep, setPrep] = useState({ inbox: false, calendar: false });
   const [completed, setCompleted] = useState(false);
   const [hydratedKey, setHydratedKey] = useState(null);
+  const dragIdx = useRef(null);
 
   useEffect(() => {
     if (planDoc === undefined) return;   // still loading this day
@@ -1201,22 +1202,24 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
       <>
       <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" } : undefined}>
 
-        {/* 1 · Close out today (weekdays) */}
+        {/* 1 · Close out today — full width */}
         {!todayWeekend && (
-          <div style={psec(T.ink)}>
+          <div style={{ ...psec(T.ink), ...span2 }}>
             <PlanHead n="1" accent={T.ink} time="NOW">Close out today</PlanHead>
-            <CheckRow
-              done={prep.inbox} label="Inbox, Slack & texts cleared" sub="Two-minute replies sent, the rest captured on the To Do List"
-              onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
-            />
-            <CheckRow
-              done={prep.todos} label="To Do List updated" sub="Carryovers + new tasks from today's meetings"
-              onToggle={() => { const next = { ...prep, todos: !prep.todos }; setPrep(next); persist({ person: { prep: next } }); }}
-            />
+            <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 28px", alignItems: "start" } : undefined}>
+              <CheckRow
+                done={prep.inbox} label="Inbox, Slack & texts cleared" sub="Two-minute replies sent, the rest captured on the To Do List"
+                onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
+              />
+              <CheckRow
+                done={prep.todos} label="To Do List updated" sub="Carryovers + new tasks from today's meetings"
+                onToggle={() => { const next = { ...prep, todos: !prep.todos }; setPrep(next); persist({ person: { prep: next } }); }}
+              />
+            </div>
             <button
               onClick={() => onGoTab("todolist")}
               style={{
-                marginTop: 4, border: "none", background: "transparent", color: T.marigoldDeep,
+                marginTop: 6, border: "none", background: "transparent", color: T.marigoldDeep,
                 cursor: "pointer", fontSize: 13, fontWeight: 700, padding: 0,
                 display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "Inter, sans-serif",
               }}
@@ -1226,118 +1229,134 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
           </div>
         )}
 
-        {/* 2 · Calendar for the target day (Mike) */}
-        {meMatch === "mike" && (
-          <div style={psec("#33608A")}>
-            <PlanHead n="2" accent="#33608A">On the calendar — {weekdayOf(offset)}</PlanHead>
-            <CalendarCard dateKey={dateKey} title="" bare />
-          </div>
-        )}
-
-        {/* 3 · Workout #1 */}
+        {/* 2 · Workout #1 */}
         <div style={psec(T.leaf)}>
-          <PlanHead n="3" accent={T.leaf} time="5:00 AM">Workout #1</PlanHead>
+          <PlanHead n="2" accent={T.leaf} time="5:00 AM">Workout #1</PlanHead>
           <div style={noteS}>Written down tonight = no 5am decisions. Enter jumps to the next line.</div>
           <WorkoutLines lines={w1} setLines={setW1} onBlur={() => persist()} placeholder="e.g. 5x5 back squat" />
         </div>
 
-        {/* 4 · Daily anchors */}
-        <div style={psec(T.inkSoft)}>
-          <PlanHead n="4" accent={T.inkSoft}>Daily anchors</PlanHead>
-          <div style={noteS}>These repeat every day and appear on the Today list automatically.</div>
-          <AnchorEditor items={anchors} onSave={saveAnchors} />
-        </div>
+        {/* 3 · Calendar for the target day */}
+        {meMatch === "mike" && (
+          <div style={psec("#33608A")}>
+            <PlanHead n="3" accent="#33608A">On the calendar — {weekdayOf(offset)}</PlanHead>
+            <CalendarCard dateKey={dateKey} title="" bare />
+          </div>
+        )}
 
-        {/* 5 · Priorities (weekdays) or Fun (weekends) — full width */}
+        {/* 4 · Priority list (weekdays) or Fun (weekends) — full width, vertical */}
         {targetWeekend ? (
           <div style={{ ...psec(T.marigold), ...span2, background: "#FFFDF8" }}>
-            <PlanHead n="5" accent={T.marigold} time="DAYTIME">Plans &amp; family fun</PlanHead>
+            <PlanHead n="4" accent={T.marigold} time="DAYTIME">Plans &amp; family fun</PlanHead>
             <div style={noteS}>What's happening {weekdayOf(offset)}? One line each — outings, projects, or just "backyard morning".</div>
             <WorkoutLines lines={fun} setLines={setFun} onBlur={() => persist()} placeholder="e.g. Farmers market + playground" />
           </div>
         ) : (
           <div style={{ ...psec(T.marigold), ...span2, background: "#FFFDF8" }}>
-            <PlanHead n="5" accent={T.marigold} time="9:00–3:30">Priority list</PlanHead>
+            <PlanHead n="4" accent={T.marigold} time="9:00–3:30">Priority list</PlanHead>
             <div style={noteS}>
-              In execution order — #1 defines the day. Pull tasks in from the To Do List with → PL, or add here directly.
+              In execution order — #1 defines the day. Drag to reorder. Pull tasks in from the To Do List with → PL, or add here directly.
             </div>
-            <div style={wide ? { display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: "0 28px" } : undefined}>
-              <div>
-                {priorities.length === 0 && (
-                  <div style={{ fontSize: 13.5, color: T.inkSoft, marginBottom: 10 }}>
-                    Nothing scheduled yet for this day.
-                  </div>
-                )}
-                {priorities.map((it, i) => {
-                  const cat = it.cat ? catOf(it.cat) : null;
-                  const swap = (a, b) => {
-                    const next = [...priorities];
-                    [next[a], next[b]] = [next[b], next[a]];
+            {priorities.length === 0 && (
+              <div style={{ fontSize: 13.5, color: T.inkSoft, marginBottom: 10 }}>
+                Nothing scheduled yet for this day.
+              </div>
+            )}
+            {priorities.map((it, i) => {
+              const cat = it.cat ? catOf(it.cat) : null;
+              const reorderTo = (to) => {
+                const from = dragIdx.current;
+                if (from === null || from === to) return;
+                const next = [...priorities];
+                const [m] = next.splice(from, 1);
+                next.splice(to, 0, m);
+                dragIdx.current = to;
+                setPriorities(next);
+              };
+              return (
+                <div
+                  key={it.id}
+                  data-pri={i}
+                  draggable
+                  onDragStart={() => { dragIdx.current = i; }}
+                  onDragEnter={() => reorderTo(i)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragEnd={() => { dragIdx.current = null; persist(); }}
+                  onDrop={(e) => e.preventDefault()}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 9, marginBottom: 8,
+                    background: i === 0 ? "#FDF6E7" : "#FFFFFF",
+                    border: i === 0 ? `1px solid ${T.marigold}` : `1px solid ${T.line}`,
+                    borderRadius: 11, padding: "9px 12px",
+                  }}
+                >
+                  <span
+                    onTouchStart={(e) => { dragIdx.current = i; }}
+                    onTouchMove={(e) => {
+                      e.preventDefault();
+                      const t = e.touches[0];
+                      const el = document.elementFromPoint(t.clientX, t.clientY);
+                      const row = el && el.closest && el.closest("[data-pri]");
+                      if (row) reorderTo(Number(row.getAttribute("data-pri")));
+                    }}
+                    onTouchEnd={() => { dragIdx.current = null; persist(); }}
+                    style={{ cursor: "grab", color: T.inkSoft, display: "flex", touchAction: "none", flexShrink: 0 }}
+                    title="Drag to reorder"
+                  >
+                    <GripVertical size={17} />
+                  </span>
+                  <span style={{
+                    width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                    background: i === 0 ? T.marigold : "#EDEFF3",
+                    color: i === 0 ? "#fff" : T.inkSoft,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, fontWeight: 800,
+                  }}>{i === 0 ? "★" : i + 1}</span>
+                  <input
+                    value={it.text}
+                    onChange={(e) => {
+                      const next = priorities.map((x) => x.id === it.id ? { ...x, text: e.target.value } : x);
+                      setPriorities(next);
+                    }}
+                    onBlur={() => persist()}
+                    style={{
+                      flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent",
+                      fontSize: 15.5, fontWeight: i === 0 ? 800 : 600, color: T.ink,
+                      fontFamily: "Inter, sans-serif", padding: "3px 0",
+                    }}
+                  />
+                  {cat && (
+                    <span style={{
+                      fontSize: 10.5, fontWeight: 800, color: "#fff", background: cat.color,
+                      borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", flexShrink: 0,
+                    }}>{cat.abbr}</span>
+                  )}
+                  <button onClick={() => {
+                    const next = priorities.filter((x) => x.id !== it.id);
                     setPriorities(next);
                     setTimeout(() => persist({ person: { priorities: next } }), 0);
-                  };
-                  return (
-                    <div key={it.id} style={{
-                      display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
-                      background: i === 0 ? "#FDF6E7" : "transparent",
-                      border: i === 0 ? `1px solid ${T.marigold}` : "1px solid transparent",
-                      borderRadius: 10, padding: i === 0 ? "8px 10px" : "2px 10px 2px 0",
-                    }}>
-                      <span style={{
-                        width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-                        background: i === 0 ? T.marigold : "#EDEFF3",
-                        color: i === 0 ? "#fff" : T.inkSoft,
-                        display: "inline-flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 12, fontWeight: 800,
-                      }}>{i === 0 ? "★" : i + 1}</span>
-                      <input
-                        value={it.text}
-                        onChange={(e) => {
-                          const next = priorities.map((x) => x.id === it.id ? { ...x, text: e.target.value } : x);
-                          setPriorities(next);
-                        }}
-                        onBlur={() => persist()}
-                        style={{
-                          flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent",
-                          fontSize: 15.5, fontWeight: i === 0 ? 800 : 600, color: T.ink,
-                          fontFamily: "Inter, sans-serif", padding: "6px 0",
-                        }}
-                      />
-                      {cat && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 800, color: "#fff", background: cat.color,
-                          borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap",
-                        }}>{cat.label.split(" ")[0]}</span>
-                      )}
-                      <button disabled={i === 0} onClick={() => swap(i, i - 1)} style={{ border: "none", background: "transparent", color: i === 0 ? T.line : T.inkSoft, cursor: i === 0 ? "default" : "pointer", fontSize: 15, padding: 2 }}>▲</button>
-                      <button disabled={i === priorities.length - 1} onClick={() => swap(i, i + 1)} style={{ border: "none", background: "transparent", color: i === priorities.length - 1 ? T.line : T.inkSoft, cursor: i === priorities.length - 1 ? "default" : "pointer", fontSize: 15, padding: 2 }}>▼</button>
-                      <button onClick={() => {
-                        const next = priorities.filter((x) => x.id !== it.id);
-                        setPriorities(next);
-                        setTimeout(() => persist({ person: { priorities: next } }), 0);
-                      }} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 16, fontWeight: 700, padding: 2 }}>×</button>
-                    </div>
-                  );
-                })}
-                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                  <input
-                    value={newPri}
-                    onChange={(e) => setNewPri(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && newPri.trim()) {
-                        const next = [...priorities, { id: `${Date.now()}`, text: newPri.trim(), done: false }];
-                        setPriorities(next);
-                        setNewPri("");
-                        setTimeout(() => persist({ person: { priorities: next } }), 0);
-                      }
-                    }}
-                    placeholder="Add a priority directly…"
-                    style={inputStyle}
-                  />
+                  }} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 17, fontWeight: 700, padding: 2, flexShrink: 0 }}>×</button>
                 </div>
-              </div>
+              );
+            })}
+            <input
+              value={newPri}
+              onChange={(e) => setNewPri(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newPri.trim()) {
+                  const next = [...priorities, { id: `${Date.now()}`, text: newPri.trim(), done: false }];
+                  setPriorities(next);
+                  setNewPri("");
+                  setTimeout(() => persist({ person: { priorities: next } }), 0);
+                }
+              }}
+              placeholder="Add a priority directly… (Enter to add)"
+              style={{ ...inputStyle, marginTop: 4 }}
+            />
+            <div style={{ borderTop: `1px dashed ${T.line}`, margin: "16px 0 12px" }} />
+            <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" } : undefined}>
               <div>
-                <div style={{ ...labelS, marginTop: wide ? 0 : 14 }}>Deep block 1 will produce…</div>
+                <div style={{ ...labelS, marginTop: 0 }}>Deep block 1 will produce…</div>
                 <input
                   value={blocks[0]}
                   onChange={(e) => setBlocks([e.target.value, blocks[1]])}
@@ -1345,7 +1364,9 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
                   placeholder="e.g. Q3 proposal draft sent to client"
                   style={inputStyle}
                 />
-                <div style={labelS}>Deep block 2 will produce…</div>
+              </div>
+              <div>
+                <div style={{ ...labelS, marginTop: wide ? 0 : 14 }}>Deep block 2 will produce…</div>
                 <input
                   value={blocks[1]}
                   onChange={(e) => setBlocks([blocks[0], e.target.value])}
@@ -1358,25 +1379,16 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
           </div>
         )}
 
-        {/* 6 · Wrap up (weekdays) */}
-        {!targetWeekend && (
-          <div style={psec(T.ink)}>
-            <PlanHead n="6" accent={T.ink} time="3:30 PM">Wrap up &amp; set up</PlanHead>
-            <div style={noteS}>Standing every day — edit if the ritual changes.</div>
-            <AnchorEditor items={wrapup} onSave={saveWrapup} />
-          </div>
-        )}
-
-        {/* 7 · Workout #2 */}
+        {/* 5 · Workout #2 */}
         <div style={psec(T.leaf)}>
-          <PlanHead n="7" accent={T.leaf} time="4:00 PM">Workout #2</PlanHead>
+          <PlanHead n="5" accent={T.leaf} time="4:00 PM">Workout #2</PlanHead>
           <WorkoutLines lines={w2} setLines={setW2} onBlur={() => persist()} placeholder="e.g. 20 min bike + core" />
         </div>
 
-        {/* 8 · Dinner — full width */}
-        <div style={{ ...psec(T.coral), ...span2 }}>
-          <PlanHead n="8" accent={T.coral} time="4:45 PM">Family dinner</PlanHead>
-          <div style={noteS}>Shared — Tina sees this too. Note any prep to do tonight.</div>
+        {/* 6 · Dinner */}
+        <div style={psec(T.coral)}>
+          <PlanHead n="6" accent={T.coral} time="4:45 PM">Family dinner</PlanHead>
+          <div style={noteS}>Shared — Tina sees this too.</div>
           <input
             value={dinner}
             onChange={(e) => setDinner(e.target.value)}
