@@ -282,6 +282,7 @@ function CheckRow({ done, label, sub, onToggle, big }) {
 }
 
 const EMPTY_PLAN = {
+  priorities: [],
   top3: ["", "", ""], done3: [false, false, false], star: 0,
   blocks: ["", ""], blocksDone: [false, false],
   w1: [""], w1done: [], w2: [""], w2done: [],
@@ -289,6 +290,36 @@ const EMPTY_PLAN = {
   anchorsDone: {}, wrapupDone: {},
   prep: { inbox: false, calendar: false }, shutdownComplete: false,
 };
+
+/* ------------------------------------------------------------------ */
+/*  To Do List categories (clients green, Realty blue, Personal red)   */
+/* ------------------------------------------------------------------ */
+const TD_CATS = [
+  { id: "bearcamp", label: "Bear Camp Cabin Rentals", color: "#2F6D54" },
+  { id: "panhandle", label: "Panhandle Getaways", color: "#2F6D54" },
+  { id: "killington", label: "The Killington Group", color: "#2F6D54" },
+  { id: "kauai", label: "Kauai Real Estate Group", color: "#2F6D54" },
+  { id: "nashville", label: "Nashville Vacation Homes", color: "#2F6D54" },
+  { id: "haller", label: "Haller Vacation Rentals", color: "#2F6D54" },
+  { id: "newwave", label: "New Wave Vacation Rentals", color: "#2F6D54" },
+  { id: "heights", label: "The Heights Hotel", color: "#2F6D54" },
+  { id: "realty", label: "Realty Advisors", color: "#33608A" },
+  { id: "personal", label: "Personal", color: "#9E3B2F" },
+];
+const catOf = (id) => TD_CATS.find((c) => c.id === id);
+
+/* Ordered priority list for a day. Reads the new format, falls back to
+   the old Top-3 fields so this week's existing plans still display. */
+function getPriorities(p) {
+  if (p.priorities && p.priorities.length) return p.priorities;
+  const legacy = (p.top3 || [])
+    .map((t, i) => ({ id: "legacy" + i, text: t, done: !!(p.done3 || [])[i], idx: i }))
+    .filter((x) => x.text && x.text.trim());
+  if (!legacy.length) return [];
+  const star = p.star ?? 0;
+  return [...legacy.filter((x) => x.idx === star), ...legacy.filter((x) => x.idx !== star)]
+    .map(({ id, text, done }) => ({ id, text, done }));
+}
 
 const DEFAULT_ANCHORS = [
   { t: "5:30 AM", label: "Give gratitude" },
@@ -636,7 +667,8 @@ function TodaySchedule({ view, setView, onGoTab }) {
   const w1 = (p.w1 || []).filter((l) => l && l.trim());
   const w2 = (p.w2 || []).filter((l) => l && l.trim());
   const fun = (p.fun || []).filter((l) => l && l.trim());
-  const hasPlan = w1.length > 0 || (weekend ? fun.length > 0 : p.top3.some((t) => t && t.trim()));
+  const pris = getPriorities(p);
+  const hasPlan = w1.length > 0 || (weekend ? fun.length > 0 : pris.length > 0);
 
   const setPerson = (next) => savePlan({ ...(planDoc || {}), [view]: next });
 
@@ -664,7 +696,7 @@ function TodaySchedule({ view, setView, onGoTab }) {
   w1.forEach((_, i) => items.push(!!(p.w1done || [])[i]));
   anchors.forEach((_, i) => items.push(!!(p.anchorsDone || {})[i]));
   if (!weekend) {
-    p.top3.forEach((t, i) => { if (t && t.trim()) items.push(!!p.done3[i]); });
+    pris.forEach((x) => items.push(!!x.done));
     p.blocks.forEach((b, i) => { if (b && b.trim()) items.push(!!p.blocksDone[i]); });
     wrapup.forEach((_, i) => items.push(!!(p.wrapupDone || {})[i]));
   } else {
@@ -796,33 +828,30 @@ function TodaySchedule({ view, setView, onGoTab }) {
       )}
 
       {/* 9:00–3:30 — priorities & deep blocks (weekdays only) */}
-      {!weekend && (p.top3.some((t) => t && t.trim()) || p.blocks.some((b) => b && b.trim())) && (
+      {!weekend && (pris.length > 0 || p.blocks.some((b) => b && b.trim())) && (
         <>
           <div style={divider} />
           <TimeRow time="9:00 AM">
-            <div style={{ fontSize: 12, fontWeight: 800, color: T.ink, paddingTop: 8 }}>Priorities (9:00–3:30)</div>
-            {[p.star, ...[0, 1, 2].filter((i) => i !== p.star)].map((i) => {
-              const text = p.top3[i];
-              if (!text || !text.trim()) return null;
-              const isStar = i === p.star;
-              return (
-                <div key={i} style={isStar ? {
-                  background: "#FDF6E7", border: `1px solid ${T.marigold}`,
-                  borderRadius: 10, padding: "4px 10px 2px", margin: "4px 0 6px",
-                } : {}}>
-                  {isStar && (
+            <div style={{ fontSize: 12, fontWeight: 800, color: T.ink, paddingTop: 8 }}>Priority list (9:00–3:30)</div>
+            {pris.map((it, i) => {
+              const toggle = () => {
+                const next = pris.map((x) => x.id === it.id ? { ...x, done: !x.done } : x);
+                setPerson({ ...p, priorities: next });
+              };
+              if (i === 0) {
+                return (
+                  <div key={it.id} style={{
+                    background: "#FDF6E7", border: `1px solid ${T.marigold}`,
+                    borderRadius: 10, padding: "4px 10px 2px", margin: "4px 0 6px",
+                  }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       <Star size={11} fill={T.marigold} color={T.marigold} /> Defines today
                     </div>
-                  )}
-                  <CheckRow
-                    big={isStar}
-                    done={p.done3[i]}
-                    label={text}
-                    onToggle={() => { const done3 = [...p.done3]; done3[i] = !done3[i]; setPerson({ ...p, done3 }); }}
-                  />
-                </div>
-              );
+                    <CheckRow big done={!!it.done} label={it.text} onToggle={toggle} />
+                  </div>
+                );
+              }
+              return <CheckRow key={it.id} done={!!it.done} label={`${i + 1}. ${it.text}`} onToggle={toggle} />;
             })}
             {p.blocks.map((b, i) => b && b.trim() && (
               <CheckRow
@@ -933,10 +962,10 @@ function TomorrowSnapshot({ meMatch, onGoTab }) {
   const w1 = (p.w1 || []).filter((l) => l && l.trim());
   const w2 = (p.w2 || []).filter((l) => l && l.trim());
   const fun = (p.fun || []).filter((l) => l && l.trim());
-  const tops = p.top3.map((t, i) => ({ t, i })).filter((x) => x.t && x.t.trim());
+  const pris = getPriorities(p);
   const blocks = p.blocks.filter((b) => b && b.trim());
   const dinner = (planDoc || {}).dinner;
-  const any = w1.length || w2.length || fun.length || tops.length || blocks.length || dinner;
+  const any = w1.length || w2.length || fun.length || pris.length || blocks.length || dinner;
 
   const Row = ({ label, children }) => (
     <div style={{ display: "grid", gridTemplateColumns: "84px 1fr", gap: 8, padding: "4px 0", alignItems: "start" }}>
@@ -968,16 +997,16 @@ function TomorrowSnapshot({ meMatch, onGoTab }) {
         </div>
       ) : (
         <div>
-          {tops.length > 0 && (
-            <Row label="Top 3">
-              {[p.star, ...tops.map((x) => x.i).filter((i) => i !== p.star)]
-                .filter((i) => p.top3[i] && p.top3[i].trim())
-                .map((i, k) => (
-                  <span key={i} style={{ display: "block", fontWeight: i === p.star ? 800 : 500 }}>
-                    {i === p.star && <Star size={11} fill={T.marigold} color={T.marigold} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
-                    {p.top3[i]}
-                  </span>
-                ))}
+          {pris.length > 0 && (
+            <Row label="Priorities">
+              {pris.map((it, i) => (
+                <span key={it.id} style={{ display: "block", fontWeight: i === 0 ? 800 : 500 }}>
+                  {i === 0
+                    ? <Star size={11} fill={T.marigold} color={T.marigold} style={{ marginRight: 4, verticalAlign: "-1px" }} />
+                    : <span style={{ color: T.inkSoft, marginRight: 4 }}>{i + 1}.</span>}
+                  {it.text}
+                </span>
+              ))}
             </Row>
           )}
           {blocks.length > 0 && (
@@ -1006,15 +1035,15 @@ function TomorrowSnapshot({ meMatch, onGoTab }) {
 /* ------------------------------------------------------------------ */
 /*  Plan tab — the 3:30 shutdown, in the order of the day it builds    */
 /* ------------------------------------------------------------------ */
-function PlanTab({ meMatch, meName, wide }) {
+function PlanTab({ meMatch, meName, wide, onGoTab }) {
   const [offset, setOffset] = useState(1); // 1 = tomorrow … 5 = four days after
   const dateKey = dateKeyOffset(offset);
   const [planDoc, savePlan] = useHubDoc(`plan-${dateKey}`);
   const [templateDoc, saveTemplate] = useHubDoc("template");
   const [routineDoc, saveRoutine] = useHubDoc("routine");
 
-  const [top3, setTop3] = useState(["", "", ""]);
-  const [star, setStar] = useState(0);
+  const [priorities, setPriorities] = useState([]);
+  const [newPri, setNewPri] = useState("");
   const [blocks, setBlocks] = useState(["", ""]);
   const [w1, setW1] = useState([""]);
   const [w2, setW2] = useState([""]);
@@ -1028,8 +1057,7 @@ function PlanTab({ meMatch, meName, wide }) {
     if (planDoc === undefined) return;   // still loading this day
     if (hydratedKey === dateKey) return; // already hydrated for this day
     const p = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
-    setTop3([...p.top3]);
-    setStar(p.star ?? 0);
+    setPriorities(getPriorities(p));
     setBlocks([...p.blocks]);
     setW1(p.w1 && p.w1.length ? [...p.w1] : [""]);
     setW2(p.w2 && p.w2.length ? [...p.w2] : [""]);
@@ -1040,12 +1068,20 @@ function PlanTab({ meMatch, meName, wide }) {
     setHydratedKey(dateKey);
   }, [planDoc, dateKey, meMatch, hydratedKey]);
 
+  // If a task is moved here from the To Do List while this day is open, absorb it
+  useEffect(() => {
+    if (planDoc === undefined || hydratedKey !== dateKey) return;
+    const remote = getPriorities({ ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) });
+    if (remote.length > priorities.length) setPriorities(remote);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planDoc]);
+
   const persist = (overrides = {}) => {
     if (hydratedKey !== dateKey) return; // never save stale contents onto a different day
     const existing = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
     const person = {
       ...existing,
-      top3, star, blocks, w1, w2, fun, prep, shutdownComplete: completed,
+      priorities, blocks, w1, w2, fun, prep, shutdownComplete: completed,
       ...overrides.person,
     };
     savePlan({
@@ -1170,13 +1206,23 @@ function PlanTab({ meMatch, meName, wide }) {
           <div style={psec(T.ink)}>
             <PlanHead n="1" accent={T.ink} time="NOW">Close out today</PlanHead>
             <CheckRow
-              done={prep.inbox} label="Inbox cleared" sub="Two-minute replies sent, the rest captured below"
+              done={prep.inbox} label="Inbox, Slack & texts cleared" sub="Two-minute replies sent, the rest captured on the To Do List"
               onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
             />
             <CheckRow
-              done={prep.calendar} label="Calendar reviewed" sub="You know what tomorrow holds"
-              onToggle={() => { const next = { ...prep, calendar: !prep.calendar }; setPrep(next); persist({ person: { prep: next } }); }}
+              done={prep.todos} label="To Do List updated" sub="Carryovers + new tasks from today's meetings"
+              onToggle={() => { const next = { ...prep, todos: !prep.todos }; setPrep(next); persist({ person: { prep: next } }); }}
             />
+            <button
+              onClick={() => onGoTab("todolist")}
+              style={{
+                marginTop: 4, border: "none", background: "transparent", color: T.marigoldDeep,
+                cursor: "pointer", fontSize: 13, fontWeight: 700, padding: 0,
+                display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "Inter, sans-serif",
+              }}
+            >
+              Open the To Do List <ArrowRight size={13} />
+            </button>
           </div>
         )}
 
@@ -1211,28 +1257,84 @@ function PlanTab({ meMatch, meName, wide }) {
           </div>
         ) : (
           <div style={{ ...psec(T.marigold), ...span2, background: "#FFFDF8" }}>
-            <PlanHead n="5" accent={T.marigold} time="9:00–3:30">Top 3 priorities</PlanHead>
-            <div style={noteS}>Tap the star for the ONE that defines the day.</div>
-            <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" } : undefined}>
+            <PlanHead n="5" accent={T.marigold} time="9:00–3:30">Priority list</PlanHead>
+            <div style={noteS}>
+              In execution order — #1 defines the day. Pull tasks in from the To Do List with → PL, or add here directly.
+            </div>
+            <div style={wide ? { display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: "0 28px" } : undefined}>
               <div>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                    <button
-                      onClick={() => { setStar(i); persist({ person: { star: i } }); }}
-                      aria-label={`Make priority ${i + 1} the star`}
-                      style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2 }}
-                    >
-                      <Star size={22} fill={star === i ? T.marigold : "none"} color={star === i ? T.marigold : T.line} />
-                    </button>
-                    <input
-                      value={top3[i]}
-                      onChange={(e) => { const next = [...top3]; next[i] = e.target.value; setTop3(next); }}
-                      onBlur={() => persist()}
-                      placeholder={i === 0 ? "The most important thing" : `Priority ${i + 1}`}
-                      style={inputStyle}
-                    />
+                {priorities.length === 0 && (
+                  <div style={{ fontSize: 13.5, color: T.inkSoft, marginBottom: 10 }}>
+                    Nothing scheduled yet for this day.
                   </div>
-                ))}
+                )}
+                {priorities.map((it, i) => {
+                  const cat = it.cat ? catOf(it.cat) : null;
+                  const swap = (a, b) => {
+                    const next = [...priorities];
+                    [next[a], next[b]] = [next[b], next[a]];
+                    setPriorities(next);
+                    setTimeout(() => persist({ person: { priorities: next } }), 0);
+                  };
+                  return (
+                    <div key={it.id} style={{
+                      display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+                      background: i === 0 ? "#FDF6E7" : "transparent",
+                      border: i === 0 ? `1px solid ${T.marigold}` : "1px solid transparent",
+                      borderRadius: 10, padding: i === 0 ? "8px 10px" : "2px 10px 2px 0",
+                    }}>
+                      <span style={{
+                        width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                        background: i === 0 ? T.marigold : "#EDEFF3",
+                        color: i === 0 ? "#fff" : T.inkSoft,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, fontWeight: 800,
+                      }}>{i === 0 ? "★" : i + 1}</span>
+                      <input
+                        value={it.text}
+                        onChange={(e) => {
+                          const next = priorities.map((x) => x.id === it.id ? { ...x, text: e.target.value } : x);
+                          setPriorities(next);
+                        }}
+                        onBlur={() => persist()}
+                        style={{
+                          flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent",
+                          fontSize: 15.5, fontWeight: i === 0 ? 800 : 600, color: T.ink,
+                          fontFamily: "Inter, sans-serif", padding: "6px 0",
+                        }}
+                      />
+                      {cat && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, color: "#fff", background: cat.color,
+                          borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap",
+                        }}>{cat.label.split(" ")[0]}</span>
+                      )}
+                      <button disabled={i === 0} onClick={() => swap(i, i - 1)} style={{ border: "none", background: "transparent", color: i === 0 ? T.line : T.inkSoft, cursor: i === 0 ? "default" : "pointer", fontSize: 15, padding: 2 }}>▲</button>
+                      <button disabled={i === priorities.length - 1} onClick={() => swap(i, i + 1)} style={{ border: "none", background: "transparent", color: i === priorities.length - 1 ? T.line : T.inkSoft, cursor: i === priorities.length - 1 ? "default" : "pointer", fontSize: 15, padding: 2 }}>▼</button>
+                      <button onClick={() => {
+                        const next = priorities.filter((x) => x.id !== it.id);
+                        setPriorities(next);
+                        setTimeout(() => persist({ person: { priorities: next } }), 0);
+                      }} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 16, fontWeight: 700, padding: 2 }}>×</button>
+                    </div>
+                  );
+                })}
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <input
+                    value={newPri}
+                    onChange={(e) => setNewPri(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newPri.trim()) {
+                        const next = [...priorities, { id: `${Date.now()}`, text: newPri.trim(), done: false }];
+                        setPriorities(next);
+                        setNewPri("");
+                        setTimeout(() => persist({ person: { priorities: next } }), 0);
+                      }
+                    }}
+                    placeholder="Add a priority directly…"
+                    style={inputStyle}
+                  />
+                </div>
               </div>
               <div>
                 <div style={{ ...labelS, marginTop: wide ? 0 : 14 }}>Deep block 1 will produce…</div>
@@ -1323,7 +1425,7 @@ function PlanTab({ meMatch, meName, wide }) {
       <PrintSheet
         dateKey={dateKey} weekend={targetWeekend}
         anchors={anchors} wrapup={wrapup}
-        top3={top3} star={star} blocks={blocks}
+        priorities={priorities} blocks={blocks}
         w1={w1} w2={w2} fun={fun} dinner={dinner}
       />
     </div>
@@ -1863,7 +1965,7 @@ function ProfileSetup({ members, onDone }) {
 /* ------------------------------------------------------------------ */
 /*  Printable daily plan sheet (hidden on screen, shown when printing) */
 /* ------------------------------------------------------------------ */
-function PrintSheet({ dateKey, weekend, anchors, wrapup, top3, star, blocks, w1, w2, fun, dinner }) {
+function PrintSheet({ dateKey, weekend, anchors, wrapup, priorities, blocks, w1, w2, fun, dinner }) {
   const box = {
     display: "inline-block", width: 12, height: 12, border: "1.4px solid #003157",
     borderRadius: 3, marginRight: 9, verticalAlign: "-2px", flexShrink: 0,
@@ -1884,7 +1986,7 @@ function PrintSheet({ dateKey, weekend, anchors, wrapup, top3, star, blocks, w1,
   const cleanW1 = (w1 || []).filter((l) => l && l.trim());
   const cleanW2 = (w2 || []).filter((l) => l && l.trim());
   const cleanFun = (fun || []).filter((l) => l && l.trim());
-  const starFirst = [star, ...[0, 1, 2].filter((i) => i !== star)].filter((i) => top3[i] && top3[i].trim());
+  const pris = (priorities || []).filter((x) => x.text && x.text.trim());
 
   return (
     <div id="print-sheet" style={{ maxWidth: 660, margin: "0 auto", padding: "8px 6px" }}>
@@ -1904,10 +2006,10 @@ function PrintSheet({ dateKey, weekend, anchors, wrapup, top3, star, blocks, w1,
 
       {!weekend && (
         <>
-          <Head>TOP 3 PRIORITIES (9:00–3:30) — ★ defines the day</Head>
-          {starFirst.length === 0 && <Sub>{line(420)}</Sub>}
-          {starFirst.map((i) => (
-            <Sub key={i}>{i === star ? <strong>★ {top3[i]}</strong> : top3[i]}</Sub>
+          <Head>PRIORITY LIST (9:00–3:30) — ★ defines the day</Head>
+          {pris.length === 0 && <Sub>{line(420)}</Sub>}
+          {pris.map((it, i) => (
+            <Sub key={it.id}>{i === 0 ? <strong>★ {it.text}</strong> : <>{i + 1}. {it.text}</>}</Sub>
           ))}
           {(blocks[0] || blocks[1]) && <Head>DEEP BLOCKS</Head>}
           {blocks.map((b, i) => b && b.trim() && <Sub key={i}><em>Block {i + 1}:</em>&nbsp;{b}</Sub>)}
@@ -1936,6 +2038,228 @@ function PrintSheet({ dateKey, weekend, anchors, wrapup, top3, star, blocks, w1,
         Score: {line(36)} % done &nbsp;&nbsp; Streak at 100%: {line(36)} days
         <span style={{ float: "right", fontWeight: 400, fontStyle: "italic", color: "#5F6B78" }}>Hard stop at 4:00. The evening is yours. 🐠</span>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  To Do List — the capture pool that feeds the Priority List         */
+/* ------------------------------------------------------------------ */
+function TodoListPage({ wide }) {
+  const [tdDoc, saveTd] = useHubDoc("todolist");
+  const [drafts, setDrafts] = useState({});
+  const [movingId, setMovingId] = useState(null);
+  const [moveDate, setMoveDate] = useState("");
+  const [notesFor, setNotesFor] = useState(null);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [toast, setToast] = useState(null);
+
+  if (tdDoc === undefined) return <Spinner />;
+
+  const me = "mike";
+  const person = (tdDoc || {})[me] || {};
+  const items = person.items || [];
+  const notes = person.notes || {};
+
+  const persist = (next) => saveTd({ ...(tdDoc || {}), [me]: { ...person, ...next } });
+
+  const addItem = (catId) => {
+    const t = (drafts[catId] || "").trim();
+    if (!t) return;
+    setDrafts({ ...drafts, [catId]: "" });
+    persist({ items: [...items, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: t, cat: catId, createdAt: Date.now() }] });
+  };
+
+  const removeItem = (id) => persist({ items: items.filter((x) => x.id !== id) });
+
+  const moveToPL = async (item, dateKey) => {
+    try {
+      const ref = doc(db, "hub", `plan-${dateKey}`);
+      const snap = await getDoc(ref);
+      const data = snap.exists() ? snap.data() : {};
+      const p = { ...EMPTY_PLAN, ...(data[me] || {}) };
+      const priorities = [...getPriorities(p), { id: item.id, text: item.text, cat: item.cat, done: false }];
+      await setDoc(ref, { ...data, [me]: { ...p, priorities } });
+      persist({ items: items.filter((x) => x.id !== item.id) });
+      setMovingId(null);
+      setToast(`Moved to ${fmtDateKey(dateKey)} ✓`);
+      setTimeout(() => setToast(null), 2600);
+    } catch (e) {
+      setToast(`Couldn't move it (${e.message})`);
+      setTimeout(() => setToast(null), 3500);
+    }
+  };
+
+  const openNotes = (cat) => { setNotesFor(cat); setNotesDraft(notes[cat.id] || ""); };
+  const closeNotes = () => {
+    if (notesFor) persist({ notes: { ...notes, [notesFor.id]: notesDraft } });
+    setNotesFor(null);
+  };
+
+  // Blocks with the most items first; original order breaks ties
+  const sorted = TD_CATS
+    .map((c, i) => ({ ...c, i, count: items.filter((x) => x.cat === c.id).length }))
+    .sort((a, b) => b.count - a.count || a.i - b.i);
+
+  const inputS = {
+    width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`,
+    borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none",
+    background: "#FAFBFC", color: T.ink, fontFamily: "Inter, sans-serif",
+  };
+
+  return (
+    <div>
+      <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 24, fontWeight: 800, color: T.ink, marginBottom: 4 }}>
+        To Do List — Mike Fisher
+      </div>
+      <div style={{ fontSize: 13.5, color: T.inkSoft, marginBottom: 18, lineHeight: 1.5 }}>
+        Capture everything here, free of dates. When something's ready to actually happen,
+        hit <strong style={{ color: T.ink }}>→ PL</strong> and pick its day — it moves onto that day's Priority List.
+        Tap a block's name for running notes.
+      </div>
+
+      <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" } : undefined}>
+        {sorted.map((cat) => {
+          const catItems = items.filter((x) => x.cat === cat.id);
+          return (
+            <div key={cat.id} style={{
+              background: T.card, borderRadius: 16, padding: "16px 18px",
+              border: `1px solid ${T.line}`, borderLeft: `5px solid ${cat.color}`,
+              marginBottom: wide ? 0 : 14, opacity: catItems.length ? 1 : 0.75,
+            }}>
+              <button
+                onClick={() => openNotes(cat)}
+                title="Open running notes"
+                style={{
+                  border: "none", background: "transparent", cursor: "pointer", padding: 0,
+                  display: "flex", alignItems: "center", gap: 8, marginBottom: catItems.length ? 10 : 8,
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                <span style={{ fontSize: 16, fontWeight: 800, color: cat.color }}>{cat.label}</span>
+                <span style={{
+                  fontSize: 11.5, fontWeight: 800, color: "#fff", background: cat.color,
+                  borderRadius: 999, padding: "1px 9px",
+                }}>{catItems.length}</span>
+                {notes[cat.id] && notes[cat.id].trim() && (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: T.inkSoft }}>📝</span>
+                )}
+              </button>
+
+              {catItems.map((it) => (
+                <div key={it.id} style={{ marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 14.5, color: T.ink, lineHeight: 1.4, overflowWrap: "anywhere" }}>{it.text}</span>
+                    <button
+                      onClick={() => { setMovingId(movingId === it.id ? null : it.id); setMoveDate(dateKeyOffset(1)); }}
+                      title="Move to a day's Priority List"
+                      style={{
+                        border: `1.5px solid ${cat.color}`, background: movingId === it.id ? cat.color : "transparent",
+                        color: movingId === it.id ? "#fff" : cat.color,
+                        borderRadius: 8, padding: "3px 9px", fontSize: 12, fontWeight: 800,
+                        cursor: "pointer", fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+                      }}
+                    >
+                      → PL
+                    </button>
+                    <button
+                      onClick={() => removeItem(it.id)}
+                      style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 16, fontWeight: 700, padding: "0 2px" }}
+                    >×</button>
+                  </div>
+                  {movingId === it.id && (
+                    <div style={{ display: "flex", gap: 6, margin: "4px 0 6px 14px", alignItems: "center" }}>
+                      <input
+                        type="date" value={moveDate}
+                        onChange={(e) => setMoveDate(e.target.value)}
+                        style={{ ...inputS, width: "auto", padding: "6px 9px" }}
+                      />
+                      <button
+                        onClick={() => moveDate && moveToPL(it, moveDate)}
+                        style={{
+                          border: "none", background: T.marigold, color: T.ink, borderRadius: 8,
+                          padding: "7px 13px", cursor: "pointer", fontWeight: 800, fontSize: 12.5, fontFamily: "Inter, sans-serif",
+                        }}
+                      >Move</button>
+                      <button
+                        onClick={() => setMovingId(null)}
+                        style={{ border: "none", background: "transparent", color: T.inkSoft, cursor: "pointer", fontSize: 12.5, fontWeight: 700, fontFamily: "Inter, sans-serif" }}
+                      >cancel</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <input
+                  value={drafts[cat.id] || ""}
+                  onChange={(e) => setDrafts({ ...drafts, [cat.id]: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && addItem(cat.id)}
+                  placeholder="Add a task…"
+                  style={inputS}
+                />
+                <button
+                  onClick={() => addItem(cat.id)}
+                  style={{
+                    border: "none", background: "#EDEFF3", color: T.ink, borderRadius: 10,
+                    padding: "0 13px", cursor: "pointer", fontWeight: 800, fontFamily: "Inter, sans-serif",
+                  }}
+                ><Plus size={15} /></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Running-notes modal */}
+      {notesFor && (
+        <div
+          onClick={closeNotes}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,20,40,0.45)", zIndex: 100,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+          }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: T.card, borderRadius: 16, padding: "20px", width: "100%", maxWidth: 520,
+            borderTop: `5px solid ${notesFor.color}`,
+          }}>
+            <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 18, fontWeight: 800, color: notesFor.color, marginBottom: 4 }}>
+              {notesFor.label}
+            </div>
+            <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 10 }}>Running notes — saved when you close.</div>
+            <textarea
+              autoFocus
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+              rows={9}
+              style={{
+                width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`,
+                borderRadius: 12, padding: "12px", fontSize: 14.5, outline: "none",
+                color: T.ink, fontFamily: "Inter, sans-serif", lineHeight: 1.5, resize: "vertical",
+              }}
+            />
+            <button
+              onClick={closeNotes}
+              style={{
+                marginTop: 10, border: "none", background: notesFor.color, color: "#fff",
+                borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontWeight: 800,
+                fontSize: 13.5, fontFamily: "Inter, sans-serif",
+              }}
+            >Done</button>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: T.ink, color: "#fff", borderRadius: 999, padding: "10px 20px",
+          fontSize: 13.5, fontWeight: 700, zIndex: 120, fontFamily: "Inter, sans-serif",
+          boxShadow: "0 8px 24px rgba(0,49,87,0.3)",
+        }}>{toast}</div>
+      )}
     </div>
   );
 }
@@ -2127,7 +2451,12 @@ function AccountsTab() {
 /* ------------------------------------------------------------------ */
 const NAV = [
   { id: "home", label: "Home", icon: Fish },
-  { id: "plan", label: "Planning", icon: ClipboardList },
+  {
+    id: "planning", label: "Planning", icon: ClipboardList, children: [
+      { id: "plan", label: "The 3:30 Shutdown" },
+      { id: "todolist", label: "To Do List" },
+    ],
+  },
   {
     id: "financials", label: "Financials", icon: Wallet, children: [
       { id: "fin-overview", label: "Overview" },
@@ -2141,14 +2470,14 @@ const NAV = [
 ];
 
 function NavBar({ tab, setTab, wide }) {
-  const [finOpen, setFinOpen] = useState(false);
-  const isFin = tab.startsWith("fin-");
+  const [openMenu, setOpenMenu] = useState(null);
+  const childOf = (item) => item.children && item.children.some((c) => c.id === tab);
 
   return (
     <div style={{ display: "flex", gap: wide ? 4 : 2, marginTop: 18, position: "relative", flexWrap: "wrap" }}>
       {NAV.map((item) => {
         const Icon = item.icon;
-        const active = item.children ? isFin : tab === item.id;
+        const active = item.children ? childOf(item) : tab === item.id;
         const base = {
           border: "none", cursor: "pointer", background: "transparent",
           color: active ? "#fff" : "#8FA3B5",
@@ -2161,32 +2490,33 @@ function NavBar({ tab, setTab, wide }) {
 
         if (!item.children) {
           return (
-            <button key={item.id} onClick={() => { setFinOpen(false); setTab(item.id); }} style={base}>
+            <button key={item.id} onClick={() => { setOpenMenu(null); setTab(item.id); }} style={base}>
               <Icon size={16} />
               {item.label}
             </button>
           );
         }
 
+        const isOpen = openMenu === item.id;
         return (
           <div
             key={item.id}
             style={{ position: "relative" }}
-            onMouseEnter={() => wide && setFinOpen(true)}
-            onMouseLeave={() => wide && setFinOpen(false)}
+            onMouseEnter={() => wide && setOpenMenu(item.id)}
+            onMouseLeave={() => wide && setOpenMenu(null)}
           >
             <button
               onClick={() => {
-                if (wide) { setTab("fin-overview"); setFinOpen(false); }
-                else setFinOpen(!finOpen);
+                if (wide) { setTab(item.children[0].id); setOpenMenu(null); }
+                else setOpenMenu(isOpen ? null : item.id);
               }}
               style={base}
             >
               <Icon size={16} />
               {item.label}
-              <ChevronDown size={13} style={{ transform: finOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+              <ChevronDown size={13} style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
             </button>
-            {finOpen && wide && (
+            {isOpen && wide && (
               <div style={{
                 position: "absolute", top: "100%", left: 0, zIndex: 50,
                 background: T.card, border: `1px solid ${T.line}`, borderRadius: 12,
@@ -2195,7 +2525,7 @@ function NavBar({ tab, setTab, wide }) {
                 {item.children.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => { setTab(c.id); setFinOpen(false); }}
+                    onClick={() => { setTab(c.id); setOpenMenu(null); }}
                     style={{
                       display: "block", width: "100%", textAlign: "left",
                       border: "none", background: tab === c.id ? T.skySoft : "transparent",
@@ -2209,7 +2539,7 @@ function NavBar({ tab, setTab, wide }) {
                 ))}
               </div>
             )}
-            {finOpen && !wide && (
+            {isOpen && !wide && (
               <div style={{
                 position: "absolute", top: "100%", left: 0, zIndex: 50,
                 background: T.card, border: `1px solid ${T.line}`, borderRadius: 12,
@@ -2218,7 +2548,7 @@ function NavBar({ tab, setTab, wide }) {
                 {item.children.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => { setTab(c.id); setFinOpen(false); }}
+                    onClick={() => { setTab(c.id); setOpenMenu(null); }}
                     style={{
                       display: "block", width: "100%", textAlign: "left",
                       border: "none", background: tab === c.id ? T.skySoft : "transparent",
@@ -2327,7 +2657,7 @@ export default function App() {
   const me = profile.name;
   const meMatch = me.toLowerCase().startsWith("tina") ? "tina" : "mike";
   const contentWidth = wide
-    ? (tab === "home" || tab.startsWith("fin-") ? 1100 : tab === "plan" ? 1040 : 860)
+    ? (tab === "home" || tab.startsWith("fin-") || tab === "todolist" ? 1100 : tab === "plan" ? 1040 : 860)
     : 640;
 
   return (
@@ -2371,7 +2701,8 @@ export default function App() {
       {/* Body */}
       <div style={{ maxWidth: contentWidth, margin: "0 auto", padding: "20px 16px 60px", transition: "max-width .2s ease" }}>
         {tab === "home" && <HomeTab me={me} meMatch={meMatch} members={members} onGoTab={setTab} wide={wide} />}
-        {tab === "plan" && <PlanTab meMatch={meMatch} meName={me} wide={wide} />}
+        {tab === "plan" && <PlanTab meMatch={meMatch} meName={me} wide={wide} onGoTab={setTab} />}
+        {tab === "todolist" && <TodoListPage wide={wide} />}
         {tab.startsWith("fin-") && <FinancialsPage sub={tab} />}
         {tab === "accounts" && <AccountsTab />}
       </div>
