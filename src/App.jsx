@@ -5,8 +5,9 @@ import {
   Fish, RefreshCw, Camera, CornerDownRight, Sun, ArrowRight, LogOut,
   Dumbbell, Droplet, Apple, Target, Moon, Heart, Flame,
   Power, ClipboardList, Star, Printer, Wallet, KeyRound, ExternalLink, GripVertical,
+  Briefcase, Users, BarChart3, LayoutGrid,
 } from "lucide-react";
-import { auth, db, configured } from "./lib/firebase.js";
+import { auth, db, mfgAuth, mfgDb, configured } from "./lib/firebase.js";
 import * as appConfig from "./firebase-config.js";
 const familyEmail = appConfig.familyEmail;
 const googleClientId = appConfig.googleClientId || null;
@@ -294,15 +295,23 @@ const EMPTY_PLAN = {
 /* ------------------------------------------------------------------ */
 /*  To Do List categories (clients green, Realty blue, Personal red)   */
 /* ------------------------------------------------------------------ */
+/* Master client roster — single source of truth for the To Do List AND the MFG dashboards */
+const CLIENTS = [
+  { id: "panhandle", label: "Panhandle Getaways", abbr: "PHG" },
+  { id: "bearcamp", label: "Bear Camp Cabin Rentals", abbr: "BCCR" },
+  { id: "killington", label: "The Killington Group", abbr: "TKG" },
+  { id: "haller", label: "Haller Coastal Homes", abbr: "HCH" },
+  { id: "nashville", label: "Nashville Vacation Homes", abbr: "NVH" },
+  { id: "heights", label: "The Heights Hotel", abbr: "THH" },
+  { id: "newwave", label: "New Wave Vacation Rentals", abbr: "NW" },
+  { id: "franmaxon", label: "Fran Maxon Real Estate", abbr: "FMRE" },
+  { id: "hodnett", label: "Hodnett Cooper", abbr: "HC" },
+  { id: "kauai", label: "Kauai Real Estate Group", abbr: "KREG" },
+];
+const clientOf = (id) => CLIENTS.find((c) => c.id === id);
+
 const TD_CATS = [
-  { id: "bearcamp", label: "Bear Camp Cabin Rentals", abbr: "BCCR", color: "#2F6D54" },
-  { id: "panhandle", label: "Panhandle Getaways", abbr: "PHG", color: "#2F6D54" },
-  { id: "killington", label: "The Killington Group", abbr: "TKG", color: "#2F6D54" },
-  { id: "kauai", label: "Kauai Real Estate Group", abbr: "KREG", color: "#2F6D54" },
-  { id: "nashville", label: "Nashville Vacation Homes", abbr: "NVH", color: "#2F6D54" },
-  { id: "haller", label: "Haller Vacation Rentals", abbr: "HVR", color: "#2F6D54" },
-  { id: "newwave", label: "New Wave Vacation Rentals", abbr: "NW", color: "#2F6D54" },
-  { id: "heights", label: "The Heights Hotel", abbr: "THH", color: "#2F6D54" },
+  ...CLIENTS.map((c) => ({ ...c, color: "#2F6D54" })),
   { id: "realty", label: "Realty Advisors", abbr: "RA", color: "#33608A" },
   { id: "personal", label: "Personal", abbr: "PERS", color: "#9E3B2F" },
 ];
@@ -321,20 +330,32 @@ function getPriorities(p) {
     .map(({ id, text, done }) => ({ id, text, done }));
 }
 
-const DEFAULT_ANCHORS = [
+const DEFAULT_ANCHORS_NEW = [
+  { t: "5:30 AM", label: "Get ready — Tina's workout window" },
+  { t: "6:00 AM", label: "Kids up — breakfast & morning routine" },
+  { t: "7:45 AM", label: "Daycare dropoff" },
+  { t: "8:15 AM", label: "Emails + set up the day" },
+];
+const DEFAULT_ANCHORS = DEFAULT_ANCHORS_NEW; const OLD_ANCHORS = [
   { t: "5:30 AM", label: "Give gratitude" },
   { t: "6:30 AM", label: "Get ready for the day" },
   { t: "7:45 AM", label: "Kids dropoff" },
   { t: "8:30 AM", label: "Review calendar & emails, dinner prep — set up your day" },
 ];
 const DEFAULT_WRAPUP = [
-  { t: "3:30 PM", label: "Wrap up and set up tomorrow" },
+  { t: "4:00 PM", label: "Shutdown — lingering emails & last tasks" },
 ];
 
 function weekdayOf(offset) {
   const d = new Date();
   d.setDate(d.getDate() + offset);
   return d.toLocaleDateString(undefined, { weekday: "long" });
+}
+
+function fullDateOf(offset) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 }
 
 function weekdayShort(offset) {
@@ -349,18 +370,6 @@ function isWeekendKey(key) {
   return day === 0 || day === 6;
 }
 
-function TimeRow({ time, children }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 8, alignItems: "start" }}>
-      <div style={{ fontSize: 11.5, fontWeight: 800, color: T.marigoldDeep, paddingTop: 8, whiteSpace: "nowrap" }}>
-        {time}
-      </div>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-/* Editable list of {t, label} rows for the daily anchors */
 function AnchorEditor({ items, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(items);
@@ -644,395 +653,6 @@ function CalendarCard({ dateKey, title, bare }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Today's schedule — everything today, in order, checkable          */
-/* ------------------------------------------------------------------ */
-function TodaySchedule({ view, setView, onGoTab }) {
-  const todayKey = localDateKey();
-  const [planDoc, savePlan] = useHubDoc(`plan-${todayKey}`);
-  const [templateDoc] = useHubDoc("template");
-  const [routineDoc, saveRoutine] = useHubDoc("routine");
-  const [winsDoc, saveWins] = useHubDoc("daywins");
-  const weekend = isWeekendKey(todayKey);
-
-  const card = {
-    background: T.card, borderRadius: 14, padding: "14px 16px",
-    border: `1px solid ${T.line}`, marginBottom: 14,
-  };
-
-  const p = { ...EMPTY_PLAN, ...((planDoc || {})[view] || {}) };
-  const anchors = anchorsFor(templateDoc, view);
-  const wrapup = wrapupFor(templateDoc, view);
-  const personHabits = habitsFor(templateDoc, view);
-  const hasHabit = (id) => personHabits.some((h) => h.id === id);
-  const w1 = (p.w1 || []).filter((l) => l && l.trim());
-  const w2 = (p.w2 || []).filter((l) => l && l.trim());
-  const fun = (p.fun || []).filter((l) => l && l.trim());
-  const pris = getPriorities(p);
-  const hasPlan = w1.length > 0 || (weekend ? fun.length > 0 : pris.length > 0);
-
-  const setPerson = (next) => savePlan({ ...(planDoc || {}), [view]: next });
-
-  // Routine habit wiring (family time, in bed, exercise auto-check)
-  const rPerson = (routineDoc && routineDoc[view]) || {};
-  const rDays = rPerson.days || {};
-  const rToday = rDays[todayKey] || {};
-  const setHabit = (habitId, val) => {
-    const nextToday = { ...rToday, [habitId]: val ? 1 : 0 };
-    saveRoutine({ ...(routineDoc || {}), [view]: { ...rPerson, days: { ...rDays, [todayKey]: nextToday } } });
-  };
-
-  const toggleW = (which, idx) => {
-    const lines = which === "w1" ? w1 : w2;
-    const doneArr = [...(p[which + "done"] || [])];
-    doneArr[idx] = !doneArr[idx];
-    setPerson({ ...p, [which + "done"]: doneArr });
-    if (which === "w1" && hasHabit("exercise") && lines.every((_, k) => (k === idx ? doneArr[idx] : doneArr[k]))) {
-      setHabit("exercise", true);
-    }
-  };
-
-  // Progress across everything checkable (work items only on weekdays)
-  const items = [];
-  w1.forEach((_, i) => items.push(!!(p.w1done || [])[i]));
-  anchors.forEach((_, i) => items.push(!!(p.anchorsDone || {})[i]));
-  if (!weekend) {
-    pris.forEach((x) => items.push(!!x.done));
-    p.blocks.forEach((b, i) => { if (b && b.trim()) items.push(!!p.blocksDone[i]); });
-    wrapup.forEach((_, i) => items.push(!!(p.wrapupDone || {})[i]));
-  } else {
-    fun.forEach((_, i) => items.push(!!(p.fundone || [])[i]));
-  }
-  w2.forEach((_, i) => items.push(!!(p.w2done || [])[i]));
-  if ((planDoc || {}).dinner) items.push(!!(planDoc || {}).dinnerDone);
-  if (hasHabit("family")) items.push((rToday.family || 0) > 0);
-  if (hasHabit("bed")) items.push((rToday.bed || 0) > 0);
-  const doneN = items.filter(Boolean).length;
-  const allDone = items.length > 0 && doneN === items.length;
-  const pct = items.length ? Math.round((doneN / items.length) * 100) : 0;
-
-  // Record / clear today's 100% in the shared wins ledger
-  const wins = (winsDoc || {})[view] || {};
-  useEffect(() => {
-    if (winsDoc === undefined) return;
-    const has = !!wins[todayKey];
-    if (allDone && !has) {
-      saveWins({ ...(winsDoc || {}), [view]: { ...wins, [todayKey]: true } });
-    } else if (!allDone && has) {
-      const next = { ...wins };
-      delete next[todayKey];
-      saveWins({ ...(winsDoc || {}), [view]: next });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allDone, view, todayKey, winsDoc]);
-
-  // Consecutive 100% days (today counts once won)
-  let winStreak = allDone ? 1 : 0;
-  for (let i = 1; i < 400; i++) {
-    if (wins[dateKeyOffset(-i)]) winStreak++;
-    else break;
-  }
-
-  if (planDoc === undefined || templateDoc === undefined || routineDoc === undefined || winsDoc === undefined) {
-    return <div style={card}><SectionTitle>Today</SectionTitle><div style={{ color: T.inkSoft, fontSize: 14 }}>Loading…</div></div>;
-  }
-
-  const divider = { borderTop: `1px dashed ${T.line}`, margin: "10px 0 8px" };
-
-  return (
-    <div style={card}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-        <SectionTitle>Today, in order</SectionTitle>
-        <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-          {["mike", "tina"].map((m) => (
-            <button
-              key={m}
-              onClick={() => setView(m)}
-              style={{
-                border: `1.5px solid ${view === m ? T.ink : T.line}`,
-                background: view === m ? T.ink : "transparent",
-                color: view === m ? "#fff" : T.inkSoft,
-                borderRadius: 999, padding: "3px 11px", fontSize: 12, fontWeight: 700,
-                cursor: "pointer", fontFamily: "Inter, sans-serif", textTransform: "capitalize",
-              }}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: allDone ? T.leaf : T.ink }}>
-          {pct}% done{allDone ? " — day won 🐠" : ""}
-        </span>
-        {winStreak > 0 && (
-          <span style={{
-            display: "inline-flex", alignItems: "center", gap: 3,
-            fontSize: 12, fontWeight: 800, color: T.leaf,
-            background: T.leafSoft, borderRadius: 999, padding: "2px 10px",
-          }}>
-            <Flame size={12} /> {winStreak} {winStreak === 1 ? "day" : "days"} in a row at 100%
-          </span>
-        )}
-      </div>
-
-      {!hasPlan && (
-        <div style={{
-          background: "#FDF6E7", border: `1px solid ${T.marigold}`, borderRadius: 10,
-          padding: "8px 12px", marginBottom: 10, fontSize: 12.5, color: T.marigoldDeep, lineHeight: 1.45,
-        }}>
-          No plan was set last night — the anchors below still stand. Tonight at 3:30,{" "}
-          <button onClick={() => onGoTab("plan")} style={{ border: "none", background: "transparent", color: T.marigoldDeep, cursor: "pointer", fontWeight: 800, padding: 0, textDecoration: "underline", fontFamily: "Inter, sans-serif", fontSize: 12.5 }}>
-            run the shutdown
-          </button>.
-        </div>
-      )}
-
-      {/* 5:00 AM — Workout #1 */}
-      {w1.length > 0 && (
-        <TimeRow time="5:00 AM">
-          <div style={{ fontSize: 12, fontWeight: 800, color: T.ink, paddingTop: 8 }}>Workout #1</div>
-          {w1.map((l, i) => (
-            <CheckRow key={i} done={!!(p.w1done || [])[i]} label={l} onToggle={() => toggleW("w1", i)} />
-          ))}
-        </TimeRow>
-      )}
-
-      {/* Morning anchors */}
-      {anchors.map((a, i) => (
-        <TimeRow key={i} time={a.t}>
-          <CheckRow
-            done={!!(p.anchorsDone || {})[i]}
-            label={a.label}
-            onToggle={() => setPerson({ ...p, anchorsDone: { ...(p.anchorsDone || {}), [i]: !(p.anchorsDone || {})[i] } })}
-          />
-        </TimeRow>
-      ))}
-
-      {/* Weekend: plans & family fun */}
-      {weekend && fun.length > 0 && (
-        <>
-          <div style={divider} />
-          <TimeRow time="Daytime">
-            <div style={{ fontSize: 12, fontWeight: 800, color: T.ink, paddingTop: 8 }}>Plans &amp; family fun</div>
-            {fun.map((l, i) => (
-              <CheckRow
-                key={i}
-                done={!!(p.fundone || [])[i]}
-                label={l}
-                onToggle={() => { const arr = [...(p.fundone || [])]; arr[i] = !arr[i]; setPerson({ ...p, fundone: arr }); }}
-              />
-            ))}
-          </TimeRow>
-        </>
-      )}
-
-      {/* 9:00–3:30 — priorities & deep blocks (weekdays only) */}
-      {!weekend && (pris.length > 0 || p.blocks.some((b) => b && b.trim())) && (
-        <>
-          <div style={divider} />
-          <TimeRow time="9:00 AM">
-            <div style={{ fontSize: 12, fontWeight: 800, color: T.ink, paddingTop: 8 }}>Priority list (9:00–3:30)</div>
-            {pris.map((it, i) => {
-              const toggle = () => {
-                const next = pris.map((x) => x.id === it.id ? { ...x, done: !x.done } : x);
-                setPerson({ ...p, priorities: next });
-              };
-              if (i === 0) {
-                return (
-                  <div key={it.id} style={{
-                    background: "#FDF6E7", border: `1px solid ${T.marigold}`,
-                    borderRadius: 10, padding: "4px 10px 2px", margin: "4px 0 6px",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      <Star size={11} fill={T.marigold} color={T.marigold} /> Defines today
-                    </div>
-                    <CheckRow big done={!!it.done} label={it.text} onToggle={toggle} />
-                  </div>
-                );
-              }
-              return <CheckRow key={it.id} done={!!it.done} label={`${i + 1}. ${it.text}`} onToggle={toggle} />;
-            })}
-            {p.blocks.map((b, i) => b && b.trim() && (
-              <CheckRow
-                key={"b" + i}
-                done={p.blocksDone[i]}
-                label={b}
-                sub={`Deep block ${i + 1}`}
-                onToggle={() => { const blocksDone = [...p.blocksDone]; blocksDone[i] = !blocksDone[i]; setPerson({ ...p, blocksDone }); }}
-              />
-            ))}
-          </TimeRow>
-        </>
-      )}
-
-      <div style={divider} />
-
-      {/* Wrap up (weekdays only) */}
-      {!weekend && wrapup.map((a, i) => (
-        <TimeRow key={"wu" + i} time={a.t}>
-          <CheckRow
-            done={!!(p.wrapupDone || {})[i]}
-            label={a.label}
-            sub="Opens tomorrow's plan"
-            onToggle={() => {
-              const val = !(p.wrapupDone || {})[i];
-              setPerson({ ...p, wrapupDone: { ...(p.wrapupDone || {}), [i]: val } });
-              if (val) onGoTab("plan");
-            }}
-          />
-        </TimeRow>
-      ))}
-
-      {/* 4:00 PM — Workout #2 */}
-      {w2.length > 0 && (
-        <TimeRow time="4:00 PM">
-          <div style={{ fontSize: 12, fontWeight: 800, color: T.ink, paddingTop: 8 }}>Workout #2</div>
-          {w2.map((l, i) => (
-            <CheckRow key={i} done={!!(p.w2done || [])[i]} label={l} onToggle={() => toggleW("w2", i)} />
-          ))}
-        </TimeRow>
-      )}
-
-      {/* Dinner */}
-      {(planDoc || {}).dinner && (
-        <TimeRow time="4:45 PM">
-          <CheckRow
-            done={!!(planDoc || {}).dinnerDone}
-            label={`Dinner: ${(planDoc || {}).dinner}`}
-            sub="Prep at 4:45, eat by 5:30"
-            onToggle={() => savePlan({ ...(planDoc || {}), dinnerDone: !(planDoc || {}).dinnerDone })}
-          />
-        </TimeRow>
-      )}
-
-      {/* Evening habits, wired to the routine tracker (shown only if in that person's routine) */}
-      {hasHabit("family") && (
-        <TimeRow time="6:00 PM">
-          <CheckRow
-            done={(rToday.family || 0) > 0}
-            label="Family time — phone away"
-            onToggle={() => setHabit("family", !((rToday.family || 0) > 0))}
-          />
-        </TimeRow>
-      )}
-      {hasHabit("bed") && (
-        <TimeRow time="9:15 PM">
-          <CheckRow
-            done={(rToday.bed || 0) > 0}
-            label="In bed — tomorrow starts tonight"
-            onToggle={() => setHabit("bed", !((rToday.bed || 0) > 0))}
-          />
-        </TimeRow>
-      )}
-
-      {allDone && (
-        <div style={{
-          marginTop: 12, background: T.leafSoft, border: `1px solid ${T.leaf}`,
-          borderRadius: 10, padding: "10px", textAlign: "center",
-        }}>
-          <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
-            {[0, 1, 2].map((i) => (
-              <Fish key={i} size={18} color={T.marigold}
-                style={{ animation: `bob 1s ease-in-out ${i * 0.15}s infinite alternate` }} />
-            ))}
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: T.leaf, marginTop: 4 }}>Perfect day. Every box.</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Tomorrow's snapshot — what's already been decided                  */
-/* ------------------------------------------------------------------ */
-function TomorrowSnapshot({ meMatch, onGoTab }) {
-  const tKey = dateKeyOffset(1);
-  const [planDoc] = useHubDoc(`plan-${tKey}`);
-
-  const card = {
-    background: T.card, borderRadius: 14, padding: "14px 16px",
-    border: `1px solid ${T.line}`, marginBottom: 14,
-  };
-
-  if (planDoc === undefined) return null;
-
-  const p = { ...EMPTY_PLAN, ...((planDoc || {})[meMatch] || {}) };
-  const w1 = (p.w1 || []).filter((l) => l && l.trim());
-  const w2 = (p.w2 || []).filter((l) => l && l.trim());
-  const fun = (p.fun || []).filter((l) => l && l.trim());
-  const pris = getPriorities(p);
-  const blocks = p.blocks.filter((b) => b && b.trim());
-  const dinner = (planDoc || {}).dinner;
-  const any = w1.length || w2.length || fun.length || pris.length || blocks.length || dinner;
-
-  const Row = ({ label, children }) => (
-    <div style={{ display: "grid", gridTemplateColumns: "84px 1fr", gap: 8, padding: "4px 0", alignItems: "start" }}>
-      <span style={{ fontSize: 10.5, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.05em", paddingTop: 2 }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.45 }}>{children}</span>
-    </div>
-  );
-
-  return (
-    <div style={card}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <SectionTitle>Tomorrow's snapshot — {weekdayOf(1)} · {meMatch === "tina" ? "Tina" : "Mike"}</SectionTitle>
-        {p.shutdownComplete && (
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: T.leaf, marginBottom: 10 }}>Shutdown done ✓</span>
-        )}
-      </div>
-      {!any ? (
-        <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5 }}>
-          Nothing planned yet.{" "}
-          <button
-            onClick={() => onGoTab("plan")}
-            style={{ border: "none", background: "transparent", color: T.marigoldDeep, cursor: "pointer", fontWeight: 800, padding: 0, textDecoration: "underline", fontFamily: "Inter, sans-serif", fontSize: 13.5 }}
-          >
-            Run tonight's shutdown
-          </button>{" "}
-          and tomorrow shows up here.
-        </div>
-      ) : (
-        <div>
-          {pris.length > 0 && (
-            <Row label="Priorities">
-              {pris.map((it, i) => (
-                <span key={it.id} style={{ display: "block", fontWeight: i === 0 ? 800 : 500 }}>
-                  {i === 0
-                    ? <Star size={11} fill={T.marigold} color={T.marigold} style={{ marginRight: 4, verticalAlign: "-1px" }} />
-                    : <span style={{ color: T.inkSoft, marginRight: 4 }}>{i + 1}.</span>}
-                  {it.text}
-                </span>
-              ))}
-            </Row>
-          )}
-          {blocks.length > 0 && (
-            <Row label="Deep blocks">
-              {blocks.map((b, i) => <span key={i} style={{ display: "block" }}>{b}</span>)}
-            </Row>
-          )}
-          {fun.length > 0 && (
-            <Row label="Plans">
-              {fun.map((f, i) => <span key={i} style={{ display: "block" }}>{f}</span>)}
-            </Row>
-          )}
-          {w1.length > 0 && (
-            <Row label="Workout #1">{w1.join(" · ")}</Row>
-          )}
-          {w2.length > 0 && (
-            <Row label="Workout #2">{w2.join(" · ")}</Row>
-          )}
-          {dinner && <Row label="Dinner">{dinner}</Row>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Plan tab — the 3:30 shutdown, in the order of the day it builds    */
 /* ------------------------------------------------------------------ */
 function PlanTab({ meMatch, meName, wide, onGoTab }) {
@@ -1125,16 +745,11 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
   /* Section card: white, accent left bar, generous padding */
   const psec = (accent) => ({
     background: T.card, borderRadius: 16, padding: "18px 20px",
-    border: `1px solid ${T.line}`, borderLeft: `5px solid ${accent}`,
+    border: "1.5px solid #111", borderLeft: `5px solid ${accent}`,
     marginBottom: wide ? 0 : 14,
   });
-  const PlanHead = ({ n, accent, time, children }) => (
+  const PlanHead = ({ accent, time, children }) => (
     <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
-      <span style={{
-        width: 24, height: 24, borderRadius: "50%", background: accent, color: "#fff",
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12.5, fontWeight: 800, fontFamily: "Inter, sans-serif", flexShrink: 0,
-      }}>{n}</span>
       <span style={{
         fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 17.5, fontWeight: 800, color: T.ink,
       }}>{children}</span>
@@ -1154,7 +769,7 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 24, fontWeight: 800, color: T.ink }}>
-          The 3:30 shutdown
+          The 4pm Shutdown
         </div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {[1, 2, 3, 4, 5].map((o) => (
@@ -1202,36 +817,34 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
       <>
       <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" } : undefined}>
 
-        {/* 1 · Close out today — full width */}
+        {/* Close out the day — about TODAY */}
         {!todayWeekend && (
           <div style={{ ...psec(T.ink), ...span2 }}>
-            <PlanHead n="1" accent={T.ink} time="NOW">Close out today</PlanHead>
-            <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 28px", alignItems: "start" } : undefined}>
-              <CheckRow
-                done={prep.inbox} label="Inbox, Slack & texts cleared" sub="Two-minute replies sent, the rest captured on the To Do List"
-                onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
-              />
-              <CheckRow
-                done={prep.todos} label="To Do List updated" sub="Carryovers + new tasks from today's meetings"
-                onToggle={() => { const next = { ...prep, todos: !prep.todos }; setPrep(next); persist({ person: { prep: next } }); }}
-              />
-            </div>
-            <button
-              onClick={() => onGoTab("todolist")}
-              style={{
-                marginTop: 6, border: "none", background: "transparent", color: T.marigoldDeep,
-                cursor: "pointer", fontSize: 13, fontWeight: 700, padding: 0,
-                display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "Inter, sans-serif",
-              }}
-            >
-              Open the To Do List <ArrowRight size={13} />
-            </button>
+            <PlanHead accent={T.ink} time="4:00 PM">Close out the day!</PlanHead>
+            <CheckRow
+              done={prep.inbox} label="Answered all emails!"
+              onToggle={() => { const next = { ...prep, inbox: !prep.inbox }; setPrep(next); persist({ person: { prep: next } }); }}
+            />
+            <CheckRow
+              done={prep.workout} label="Crushed the workout!"
+              onToggle={() => { const next = { ...prep, workout: !prep.workout }; setPrep(next); persist({ person: { prep: next } }); }}
+            />
           </div>
         )}
 
+        <div style={{ ...span2, marginTop: wide ? 6 : 4, marginBottom: wide ? -4 : 0 }}>
+          <div style={{
+            fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 20, fontWeight: 800,
+            color: T.ink, display: "flex", alignItems: "center", gap: 8,
+          }}>
+            <Fish size={18} color={T.marigold} />
+            {offset === 1 ? `Tomorrow, ${fullDateOf(1)}` : fullDateOf(offset)}
+          </div>
+        </div>
+
         {/* 2 · Workout #1 */}
         <div style={psec(T.leaf)}>
-          <PlanHead n="2" accent={T.leaf} time="5:00 AM">Workout #1</PlanHead>
+          <PlanHead accent={T.leaf} time="5:00 AM">Workout #1</PlanHead>
           <div style={noteS}>Written down tonight = no 5am decisions. Enter jumps to the next line.</div>
           <WorkoutLines lines={w1} setLines={setW1} onBlur={() => persist()} placeholder="e.g. 5x5 back squat" />
         </div>
@@ -1239,7 +852,7 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
         {/* 3 · Calendar for the target day */}
         {meMatch === "mike" && (
           <div style={psec("#33608A")}>
-            <PlanHead n="3" accent="#33608A">On the calendar — {weekdayOf(offset)}</PlanHead>
+            <PlanHead accent="#33608A">On the calendar — {weekdayOf(offset)}</PlanHead>
             <CalendarCard dateKey={dateKey} title="" bare />
           </div>
         )}
@@ -1247,13 +860,13 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
         {/* 4 · Priority list (weekdays) or Fun (weekends) — full width, vertical */}
         {targetWeekend ? (
           <div style={{ ...psec(T.marigold), ...span2, background: "#FFFDF8" }}>
-            <PlanHead n="4" accent={T.marigold} time="DAYTIME">Plans &amp; family fun</PlanHead>
+            <PlanHead accent={T.marigold} time="DAYTIME">Plans &amp; family fun</PlanHead>
             <div style={noteS}>What's happening {weekdayOf(offset)}? One line each — outings, projects, or just "backyard morning".</div>
             <WorkoutLines lines={fun} setLines={setFun} onBlur={() => persist()} placeholder="e.g. Farmers market + playground" />
           </div>
         ) : (
           <div style={{ ...psec(T.marigold), ...span2, background: "#FFFDF8" }}>
-            <PlanHead n="4" accent={T.marigold} time="9:00–3:30">Priority list</PlanHead>
+            <PlanHead accent={T.marigold} time="9:00–3:30">Priority list</PlanHead>
             <div style={noteS}>
               In execution order — #1 defines the day. Drag to reorder. Pull tasks in from the To Do List with → PL, or add here directly.
             </div>
@@ -1353,41 +966,18 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
               placeholder="Add a priority directly… (Enter to add)"
               style={{ ...inputStyle, marginTop: 4 }}
             />
-            <div style={{ borderTop: `1px dashed ${T.line}`, margin: "16px 0 12px" }} />
-            <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" } : undefined}>
-              <div>
-                <div style={{ ...labelS, marginTop: 0 }}>Deep block 1 will produce…</div>
-                <input
-                  value={blocks[0]}
-                  onChange={(e) => setBlocks([e.target.value, blocks[1]])}
-                  onBlur={() => persist()}
-                  placeholder="e.g. Q3 proposal draft sent to client"
-                  style={inputStyle}
-                />
-              </div>
-              <div>
-                <div style={{ ...labelS, marginTop: wide ? 0 : 14 }}>Deep block 2 will produce…</div>
-                <input
-                  value={blocks[1]}
-                  onChange={(e) => setBlocks([blocks[0], e.target.value])}
-                  onBlur={() => persist()}
-                  placeholder="e.g. Retainer report for client B done"
-                  style={inputStyle}
-                />
-              </div>
-            </div>
           </div>
         )}
 
         {/* 5 · Workout #2 */}
         <div style={psec(T.leaf)}>
-          <PlanHead n="5" accent={T.leaf} time="4:00 PM">Workout #2</PlanHead>
+          <PlanHead accent={T.leaf} time="3:30 PM">Workout #2</PlanHead>
           <WorkoutLines lines={w2} setLines={setW2} onBlur={() => persist()} placeholder="e.g. 20 min bike + core" />
         </div>
 
         {/* 6 · Dinner */}
         <div style={psec(T.coral)}>
-          <PlanHead n="6" accent={T.coral} time="4:45 PM">Family dinner</PlanHead>
+          <PlanHead accent={T.coral} time="4:30 PM">Family dinner</PlanHead>
           <div style={noteS}>Shared — Tina sees this too.</div>
           <input
             value={dinner}
@@ -1437,7 +1027,7 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
       <PrintSheet
         dateKey={dateKey} weekend={targetWeekend}
         anchors={anchors} wrapup={wrapup}
-        priorities={priorities} blocks={blocks}
+        priorities={priorities}
         w1={w1} w2={w2} fun={fun} dinner={dinner}
       />
     </div>
@@ -1447,10 +1037,162 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
 /* ------------------------------------------------------------------ */
 /*  Home page                                                          */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/*  Home page cards — upcoming events, news, pulse placeholders        */
+/* ------------------------------------------------------------------ */
+function UpcomingCard() {
+  const [state, setState] = useState({ status: "loading", days: [] });
+
+  const load = useCallback(async (interactive) => {
+    if (!googleClientId) { setState({ status: "unconfigured", days: [] }); return; }
+    setState((s) => ({ ...s, status: "loading" }));
+    try {
+      const tok = await ensureGToken(interactive);
+      if (!tok) { setState({ status: "disconnected", days: [] }); return; }
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 4);
+      const url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+        + "?singleEvents=true&orderBy=startTime&maxResults=30"
+        + `&timeMin=${encodeURIComponent(start.toISOString())}`
+        + `&timeMax=${encodeURIComponent(end.toISOString())}`;
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${tok.access_token}` } });
+      if (resp.status === 401 || resp.status === 403) {
+        localStorage.removeItem("gcal_token");
+        setState({ status: "disconnected", days: [] });
+        return;
+      }
+      if (!resp.ok) throw new Error(`calendar ${resp.status}`);
+      const data = await resp.json();
+      const byDay = new Map();
+      for (const ev of data.items || []) {
+        const s = ev.start && (ev.start.dateTime || ev.start.date);
+        if (!s) continue;
+        const d = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(s + "T12:00:00");
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        if (!byDay.has(key)) byDay.set(key, []);
+        byDay.get(key).push(ev);
+      }
+      const days = [];
+      for (let i = 0; i < 4; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        days.push({
+          key,
+          label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "long" }),
+          events: byDay.get(key) || [],
+        });
+      }
+      setState({ status: "ok", days });
+    } catch (e) {
+      setState({ status: "error", days: [], err: e.message });
+    }
+  }, []);
+
+  useEffect(() => { load(false); }, [load]);
+  if (state.status === "unconfigured") return null;
+
+  return (
+    <div style={{ background: T.card, borderRadius: 14, padding: "16px 18px", border: `1px solid ${T.line}`, marginBottom: 14 }}>
+      <SectionTitle>Upcoming — next few days</SectionTitle>
+      {state.status === "loading" && <div style={{ color: T.inkSoft, fontSize: 13.5 }}>Checking the calendar…</div>}
+      {state.status === "disconnected" && (
+        <button onClick={() => load(true)} style={{
+          border: "none", background: T.marigold, color: T.ink, borderRadius: 10,
+          padding: "9px 16px", cursor: "pointer", fontWeight: 800, fontSize: 13.5, fontFamily: "Inter, sans-serif",
+        }}>Connect Google Calendar</button>
+      )}
+      {state.status === "error" && (
+        <div style={{ fontSize: 13, color: T.coral }}>
+          Calendar hiccup.{" "}
+          <button onClick={() => load(true)} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontWeight: 800, padding: 0, textDecoration: "underline", fontFamily: "Inter, sans-serif", fontSize: 13 }}>Try again</button>
+        </div>
+      )}
+      {state.status === "ok" && state.days.map((day) => (
+        <div key={day.key} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+            {day.label}
+          </div>
+          {day.events.length === 0 ? (
+            <div style={{ fontSize: 13, color: T.inkSoft, padding: "1px 0" }}>Clear.</div>
+          ) : day.events.map((ev) => {
+            const timed = ev.start && ev.start.dateTime;
+            const label = timed
+              ? new Date(ev.start.dateTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+              : "All day";
+            return (
+              <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 8, padding: "2.5px 0" }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, color: T.inkSoft, whiteSpace: "nowrap", paddingTop: 2 }}>{label}</span>
+                <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.4 }}>{ev.summary || "(no title)"}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NewsCard() {
+  const [newsDoc] = useHubDoc("news");
+  const card = { background: T.card, borderRadius: 14, padding: "16px 18px", border: `1px solid ${T.line}`, marginBottom: 14 };
+  if (newsDoc === undefined) return null;
+  const sections = (newsDoc && newsDoc.sections) || [];
+  return (
+    <div style={card}>
+      <SectionTitle>The feed</SectionTitle>
+      {sections.length === 0 ? (
+        <div style={{ fontSize: 13, color: T.inkSoft, lineHeight: 1.5 }}>
+          News lands here each morning once the nightly news job is installed.
+        </div>
+      ) : (
+        sections.map((s) => (
+          <div key={s.id} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              {s.label}
+            </div>
+            {(s.items || []).map((it, i) => (
+              <a key={i} href={it.url} target="_blank" rel="noreferrer" style={{
+                display: "block", fontSize: 13.5, color: T.ink, textDecoration: "none",
+                padding: "3px 0", lineHeight: 1.4,
+              }}>
+                {it.title}
+                <span style={{ color: T.inkSoft, fontSize: 11.5 }}> — {it.source}</span>
+              </a>
+            ))}
+          </div>
+        ))
+      )}
+      {newsDoc && newsDoc.updated && (
+        <div style={{ fontSize: 10.5, color: T.inkSoft }}>Updated {new Date(newsDoc.updated).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</div>
+      )}
+    </div>
+  );
+}
+
+function PulseCard({ title, tiles, note, cta }) {
+  return (
+    <div style={{ background: T.card, borderRadius: 14, padding: "16px 18px", border: `1px solid ${T.line}`, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <SectionTitle>{title}</SectionTitle>
+        {cta}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+        {tiles.map((t) => (
+          <div key={t} style={{ background: "#FAFBFC", border: `1px dashed ${T.line}`, borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: T.line, fontFamily: "'Bricolage Grotesque', sans-serif" }}>—</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 8, lineHeight: 1.45 }}>{note}</div>
+    </div>
+  );
+}
+
 function HomeTab({ me, meMatch, members, onGoTab, wide }) {
   const dateKey = localDateKey();
   const todayName = DAYS[(new Date().getDay() + 6) % 7];
-  const [schedView, setSchedView] = useState(meMatch);
 
   const [weather, setWeather] = useState(null);
   const [weatherBusy, setWeatherBusy] = useState(true);
@@ -1534,15 +1276,22 @@ function HomeTab({ me, meMatch, members, onGoTab, wide }) {
         {greeting}, {me}
       </div>
 
-      <div style={wide ? { display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 16, alignItems: "start" } : undefined}>
+      <div style={wide ? { display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16, alignItems: "start" } : undefined}>
       <div>
-      <TodaySchedule view={schedView} setView={setSchedView} onGoTab={onGoTab} />
+      {meMatch === "mike" && <UpcomingCard />}
 
-      {meMatch === "mike" && schedView === "mike" && (
-        <CalendarCard dateKey={dateKey} title="Today's calendar" />
-      )}
+      <PulseCard
+        title="Financial pulse"
+        tiles={["Net income", "Available to deploy", "DTI"]}
+        note="Lights up with the Financials Phase 1 engine — Monarch data, fixed expenses, the real numbers."
+      />
 
-      <TomorrowSnapshot meMatch={schedView} onGoTab={onGoTab} />
+      <PulseCard
+        title="Business pulse"
+        tiles={["Gross Profit $", "Gross Margin %", "MRR"]}
+        note="Lights up with the Mike Fisher Group data engine."
+        cta={<a href="?portal=mfg" target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 800, color: "#D31017", textDecoration: "none", marginBottom: 10 }}>Open portal →</a>}
+      />
       </div>
       <div>
       {/* Weather */}
@@ -1977,7 +1726,7 @@ function ProfileSetup({ members, onDone }) {
 /* ------------------------------------------------------------------ */
 /*  Printable daily plan sheet (hidden on screen, shown when printing) */
 /* ------------------------------------------------------------------ */
-function PrintSheet({ dateKey, weekend, anchors, wrapup, priorities, blocks, w1, w2, fun, dinner }) {
+function PrintSheet({ dateKey, weekend, anchors, wrapup, priorities, w1, w2, fun, dinner }) {
   const box = {
     display: "inline-block", width: 12, height: 12, border: "1.4px solid #003157",
     borderRadius: 3, marginRight: 9, verticalAlign: "-2px", flexShrink: 0,
@@ -2023,8 +1772,6 @@ function PrintSheet({ dateKey, weekend, anchors, wrapup, priorities, blocks, w1,
           {pris.map((it, i) => (
             <Sub key={it.id}>{i === 0 ? <strong>★ {it.text}</strong> : <>{i + 1}. {it.text}</>}</Sub>
           ))}
-          {(blocks[0] || blocks[1]) && <Head>DEEP BLOCKS</Head>}
-          {blocks.map((b, i) => b && b.trim() && <Sub key={i}><em>Block {i + 1}:</em>&nbsp;{b}</Sub>)}
           {wrapup.map((a, i) => <Row key={"wu" + i} t={a.t}>{a.label}</Row>)}
         </>
       )}
@@ -2035,16 +1782,16 @@ function PrintSheet({ dateKey, weekend, anchors, wrapup, priorities, blocks, w1,
         </>
       )}
 
-      {cleanW2.length > 0 && <Head>WORKOUT #2 (4:00 PM)</Head>}
+      {cleanW2.length > 0 && <Head>WORKOUT #2 (3:30 PM)</Head>}
       {cleanW2.map((l, i) => <Sub key={i}>{l}</Sub>)}
 
-      <Row t="4:45 PM">Start dinner{dinner ? <>: <strong>{dinner}</strong></> : <>: {line(260)}</>}</Row>
-      <Row t="5:30 PM">Dinner together — kids home by 5:15</Row>
-      <Row t="6:00 PM"><strong>Family time — phone away</strong></Row>
-      <Row t="7:30 PM">Start bedtime routine</Row>
-      <Row t="8:45 PM">Kids asleep — reset house, lay out workout clothes</Row>
-      <Row t="9:15 PM"><strong>In bed</strong> — tomorrow starts tonight</Row>
-      <Row t="9:30 PM">Asleep</Row>
+      <Row t="4:30 PM">Start dinner{dinner ? <>: <strong>{dinner}</strong></> : <>: {line(260)}</>}</Row>
+      <Row t="5:15 PM">Dinner together — family's home</Row>
+      <Row t="6:00 PM"><strong>Clean up + family time — phone away</strong></Row>
+      <Row t="6:30 PM">Annie down</Row>
+      <Row t="8:30 PM">Sebastian down</Row>
+      <Row t="9:00 PM">Reset the house — set up tomorrow</Row>
+      <Row t="9:30 PM"><strong>In bed</strong> — tomorrow starts tonight</Row>
 
       <div style={{ marginTop: 12, background: "#F4F5F7", borderRadius: 8, padding: "9px 14px", fontSize: 11, fontWeight: 700, color: "#003157", fontFamily: "Arial, sans-serif" }}>
         Score: {line(36)} % done &nbsp;&nbsp; Streak at 100%: {line(36)} days
@@ -2459,16 +2206,349 @@ function AccountsTab() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Mike Fisher Group portal — separate logins, role-based access      */
+/*  Runs at ?portal=mfg in its own browser tab with its own session.   */
+/* ------------------------------------------------------------------ */
+const MFG_CLIENTS = [
+  { id: "panhandle", label: "Panhandle Getaways", abbr: "PHG" },
+  { id: "bearcamp", label: "Bear Camp Cabin Rentals", abbr: "BCCR" },
+  { id: "killington", label: "The Killington Group", abbr: "TKG" },
+  { id: "haller", label: "Haller Coastal Homes", abbr: "HCH" },
+  { id: "nashville", label: "Nashville Vacation Homes", abbr: "NVH" },
+  { id: "heights", label: "The Heights Hotel", abbr: "THH" },
+  { id: "newwave", label: "New Wave Vacation Rentals", abbr: "NW" },
+  { id: "franmaxon", label: "Fran Maxon Real Estate", abbr: "FMRE" },
+  { id: "hodnett", label: "Hodnett Cooper", abbr: "HC" },
+  { id: "kauai", label: "Kauai Real Estate Group", abbr: "KREG" },
+];
+const mfgClientOf = (id) => MFG_CLIENTS.find((c) => c.id === id);
+
+const MFG_RED = "#D31017";
+
+function MfgKpiTile({ label, hint }) {
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px" }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: T.line, fontFamily: "'Bricolage Grotesque', sans-serif", margin: "6px 0 2px" }}>—</div>
+      {hint && <div style={{ fontSize: 11.5, color: T.inkSoft, lineHeight: 1.45 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function MfgShellNote({ children }) {
+  return (
+    <div style={{
+      background: "#FFF5F5", border: `1px solid ${MFG_RED}33`, borderRadius: 12,
+      padding: "10px 14px", margin: "14px 0 0", fontSize: 12.5, color: "#8A2A2E", lineHeight: 1.5,
+    }}>{children}</div>
+  );
+}
+
+function MFGLogin({ onError, error }) {
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inputS = {
+    width: "100%", boxSizing: "border-box", border: `1.5px solid ${T.line}`,
+    borderRadius: 12, padding: "13px 15px", fontSize: 16, outline: "none",
+    background: "#fff", color: T.ink, fontFamily: "Inter, sans-serif", marginBottom: 10,
+  };
+  const go = async () => {
+    if (!email.trim() || !pw) return;
+    setBusy(true);
+    try {
+      await signInWithEmailAndPassword(mfgAuth, email.trim(), pw);
+    } catch (e) {
+      onError(
+        e.code === "auth/invalid-credential" || e.code === "auth/wrong-password" || e.code === "auth/user-not-found"
+          ? "That email or password isn't right."
+          : `Sign-in problem (${e.code || e.message})`
+      );
+    }
+    setBusy(false);
+  };
+  return (
+    <div style={{ minHeight: "100vh", background: T.canvas, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: 400 }}>
+        <div style={{ background: T.ink, borderRadius: "16px 16px 0 0", padding: "22px 24px", borderBottom: `4px solid ${MFG_RED}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Briefcase size={22} color="#fff" />
+            <div>
+              <div style={{ color: "#fff", fontSize: 19, fontWeight: 800, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Mike Fisher Group</div>
+              <div style={{ color: "#A8BACB", fontSize: 11.5 }}>Revenue management portal</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: "0 0 16px 16px", padding: 24, border: `1px solid ${T.line}`, borderTop: "none" }}>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="username" style={inputS} />
+          <input value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="Password" type="password" autoComplete="current-password" style={inputS} />
+          {error && <div style={{ color: MFG_RED, fontSize: 13, marginBottom: 10, fontWeight: 600 }}>{error}</div>}
+          <button onClick={go} disabled={busy} style={{
+            width: "100%", border: "none", background: MFG_RED, color: "#fff", borderRadius: 12,
+            padding: "13px 0", fontSize: 15.5, fontWeight: 800, cursor: "pointer", fontFamily: "Inter, sans-serif",
+            opacity: busy ? 0.7 : 1,
+          }}>{busy ? "Signing in…" : "Sign in"}</button>
+          <div style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 12, lineHeight: 1.5 }}>
+            Access is by invitation. Clients see their own dashboard only.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MfgClientScreen({ client, isTeam, onSignOut }) {
+  const [tab, setTab] = useState("overview");
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "revenue", label: "Revenue KPIs" },
+    { id: "pacing", label: "Pacing" },
+    { id: "goals", label: "Goals" },
+  ];
+  return (
+    <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
+      <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Briefcase size={18} color="#fff" />
+              <div>
+                <div style={{ color: "#fff", fontSize: 18, fontWeight: 800, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{client.label}</div>
+                <div style={{ color: "#A8BACB", fontSize: 11 }}>Mike Fisher Group · performance dashboard</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {isTeam && (
+                <a href="?portal=mfg" style={{ color: "#A8BACB", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>← All clients</a>
+              )}
+              <button onClick={onSignOut} style={{ border: "none", background: "transparent", color: "#A8BACB", cursor: "pointer", fontSize: 12.5, fontWeight: 700, fontFamily: "Inter, sans-serif" }}>Sign out</button>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 2, marginTop: 12 }}>
+            {tabs.map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                border: "none", background: "transparent", cursor: "pointer",
+                color: tab === t.id ? "#fff" : "#8FA3B5", padding: "10px 14px 12px",
+                fontSize: 13.5, fontWeight: 700, fontFamily: "Inter, sans-serif",
+                borderBottom: `3px solid ${tab === t.id ? MFG_RED : "transparent"}`,
+              }}>{t.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "22px 20px 60px" }}>
+        {tab === "overview" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              <MfgKpiTile label="2026 Revenue YoY" hint="vs 2025, received basis" />
+              <MfgKpiTile label="Adjusted RevPAR YoY" hint="2026 vs 2025" />
+              <MfgKpiTile label="WoW Rent Revenue Pickup" hint="net new rent revenue booked this week" />
+              <MfgKpiTile label="Next 60 Days Pacing" hint="APO vs last year · vs market" />
+            </div>
+            <MfgShellNote>
+              Dashboard shell — the data engine (PMS exports → nightly processing → these tiles) arrives in the Company build phase.
+            </MfgShellNote>
+          </>
+        )}
+        {tab === "revenue" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              <MfgKpiTile label="Rent Revenue · MTD" />
+              <MfgKpiTile label="Rent Revenue · YTD" hint="vs last year" />
+              <MfgKpiTile label="Adjusted RevPAR" hint="trailing 12 months" />
+              <MfgKpiTile label="ADR / Occupancy" />
+            </div>
+            <MfgShellNote>Monthly revenue chart and YoY table render here once client data is flowing.</MfgShellNote>
+          </>
+        )}
+        {tab === "pacing" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              <MfgKpiTile label="Next 30 Days APO" hint="vs LY · vs market" />
+              <MfgKpiTile label="Next 60 Days APO" hint="vs LY · vs market" />
+              <MfgKpiTile label="Booking Window" />
+              <MfgKpiTile label="Pickup Trend" hint="4-week view" />
+            </div>
+            <MfgShellNote>Pacing curves (on-the-books vs LY vs market) land here with the data engine.</MfgShellNote>
+          </>
+        )}
+        {tab === "goals" && (
+          <MfgShellNote>
+            Per-client goals and targets (set together, tracked monthly) will live here — revenue targets, RevPAR goals, and the wins worth telling on LinkedIn.
+          </MfgShellNote>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MFGPortal({ clientParam }) {
+  const [user, setUser] = useState(undefined);
+  const [roleInfo, setRoleInfo] = useState(undefined);
+  const [err, setErr] = useState(null);
+  const [tab, setTab] = useState("company");
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(mfgAuth, (u) => { setUser(u || null); setRoleInfo(undefined); setErr(null); });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(mfgDb, "mfgRoles", user.email));
+        setRoleInfo(snap.exists() ? snap.data() : null);
+      } catch {
+        setRoleInfo(null);
+      }
+    })();
+  }, [user]);
+
+  const signOutMfg = () => signOut(mfgAuth);
+
+  if (user === undefined) return <div style={{ minHeight: "100vh", background: T.canvas }} />;
+  if (user === null) return <MFGLogin error={err} onError={setErr} />;
+  if (roleInfo === undefined) {
+    return (
+      <div style={{ minHeight: "100vh", background: T.canvas, display: "flex", alignItems: "center", justifyContent: "center", color: T.inkSoft, fontFamily: "Inter, sans-serif" }}>
+        <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
+      </div>
+    );
+  }
+  if (roleInfo === null) {
+    return (
+      <div style={{ minHeight: "100vh", background: T.canvas, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, sans-serif" }}>
+        <div style={{ textAlign: "center", maxWidth: 380 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: T.ink, marginBottom: 6 }}>No access assigned</div>
+          <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5, marginBottom: 14 }}>
+            You're signed in as {user.email}, but this account hasn't been given a portal role yet.
+          </div>
+          <button onClick={signOutMfg} style={{ border: "none", background: T.ink, color: "#fff", borderRadius: 10, padding: "10px 18px", cursor: "pointer", fontWeight: 800, fontSize: 13.5, fontFamily: "Inter, sans-serif" }}>Sign out</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Client role: their dashboard only, regardless of URL
+  if (roleInfo.role === "client") {
+    const c = mfgClientOf(roleInfo.clientId);
+    if (!c) return <div style={{ padding: 40, fontFamily: "Inter, sans-serif" }}>Client record missing — contact Mike.</div>;
+    return <MfgClientScreen client={c} isTeam={false} onSignOut={signOutMfg} />;
+  }
+
+  // Team: full portal
+  if (clientParam) {
+    const c = mfgClientOf(clientParam);
+    if (c) return <MfgClientScreen client={c} isTeam onSignOut={signOutMfg} />;
+  }
+
+  const tabs = [
+    { id: "company", label: "Company Overview" },
+    { id: "portfolio", label: "Portfolio Overview" },
+    { id: "customers", label: "Customer Dashboards" },
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
+      <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Briefcase size={20} color="#fff" />
+              <div>
+                <div style={{ color: "#fff", fontSize: 19, fontWeight: 800, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Mike Fisher Group</div>
+                <div style={{ color: "#A8BACB", fontSize: 11 }}>Signed in as {user.email}</div>
+              </div>
+            </div>
+            <button onClick={signOutMfg} style={{ border: "none", background: "transparent", color: "#A8BACB", cursor: "pointer", fontSize: 12.5, fontWeight: 700, fontFamily: "Inter, sans-serif" }}>Sign out</button>
+          </div>
+          <div style={{ display: "flex", gap: 2, marginTop: 12, flexWrap: "wrap" }}>
+            {tabs.map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                border: "none", background: "transparent", cursor: "pointer",
+                color: tab === t.id ? "#fff" : "#8FA3B5", padding: "10px 14px 12px",
+                fontSize: 13.5, fontWeight: 700, fontFamily: "Inter, sans-serif",
+                borderBottom: `3px solid ${tab === t.id ? MFG_RED : "transparent"}`,
+              }}>{t.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "22px 20px 60px" }}>
+        {tab === "company" && (
+          <>
+            <div style={{
+              background: "#fff", border: `1px solid ${T.line}`, borderLeft: `5px solid ${MFG_RED}`,
+              borderRadius: 14, padding: "16px 18px", marginBottom: 14,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: MFG_RED, textTransform: "uppercase", letterSpacing: "0.06em" }}>North star</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginTop: 4, lineHeight: 1.5 }}>
+                Gross Profit $ and Gross Margin %, month over month — revenue on a received basis (billed in arrears), minus team salaries.
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+              <MfgKpiTile label="Revenue · this month" hint="received basis — Aug services land in Sep" />
+              <MfgKpiTile label="MRR · current month" hint="seasonality-aware" />
+              <MfgKpiTile label="Salaries" hint="Aida · Jaimee" />
+              <MfgKpiTile label="Gross Profit $" />
+              <MfgKpiTile label="Gross Margin %" hint="MoM trend" />
+              <MfgKpiTile label="Projected ARR" hint="Jan–Dec received income" />
+            </div>
+            <MfgShellNote>
+              Company engine (contracts → price per listing by volume → MRR → received-basis revenue → GP/GM) is the next build phase.
+            </MfgShellNote>
+          </>
+        )}
+        {tab === "portfolio" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              <MfgKpiTile label="Portfolio Revenue · 2026 YoY" hint="all clients, aggregated" />
+              <MfgKpiTile label="Adjusted RevPAR · YoY" />
+              <MfgKpiTile label="WoW Rent Revenue Pickup" />
+              <MfgKpiTile label="Next 60 Days Pacing" hint="APO vs LY · vs market" />
+              <MfgKpiTile label="Active Listings" hint="across portfolio" />
+              <MfgKpiTile label="Clients" hint={`${MFG_CLIENTS.length} active`} />
+            </div>
+            <MfgShellNote>
+              The aggregated story — the numbers for LinkedIn and sales calls — computes from every client's data once the engine is live.
+            </MfgShellNote>
+          </>
+        )}
+        {tab === "customers" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
+            {MFG_CLIENTS.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => window.open(`${window.location.pathname}?portal=mfg&client=${c.id}`, "_blank")}
+                style={{
+                  background: "#fff", border: `1px solid ${T.line}`, borderTop: `4px solid ${MFG_RED}`,
+                  borderRadius: 14, padding: "18px 16px", cursor: "pointer", textAlign: "left",
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                <div style={{ fontSize: 15.5, fontWeight: 800, color: T.ink, marginBottom: 4 }}>{c.label}</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: MFG_RED, borderRadius: 999, padding: "2px 9px" }}>{c.abbr}</span>
+                  <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>Open dashboard →</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Tabs + App                                                         */
 /* ------------------------------------------------------------------ */
 const NAV = [
   { id: "home", label: "Home", icon: Fish },
-  {
-    id: "planning", label: "Planning", icon: ClipboardList, children: [
-      { id: "plan", label: "The 3:30 Shutdown" },
-      { id: "todolist", label: "To Do List" },
-    ],
-  },
+  { id: "plan", label: "4pm Shutdown", icon: ClipboardList },
+  { id: "todolist", label: "To Do List", icon: CheckSquare },
   {
     id: "financials", label: "Financials", icon: Wallet, children: [
       { id: "fin-overview", label: "Overview" },
@@ -2577,6 +2657,24 @@ function NavBar({ tab, setTab, wide }) {
           </div>
         );
       })}
+      <a
+        href="?portal=mfg"
+        target="_blank"
+        rel="noreferrer"
+        title="Mike Fisher Group — opens in a new tab with its own login"
+        style={{
+          marginLeft: wide ? "auto" : 0,
+          color: "#FF6B72", textDecoration: "none",
+          padding: wide ? "12px 16px 14px" : "11px 10px 13px",
+          fontSize: wide ? 14.5 : 13, fontWeight: 800, fontFamily: "Inter, sans-serif",
+          display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap",
+          borderBottom: "3px solid transparent",
+        }}
+      >
+        <Briefcase size={16} />
+        Mike Fisher Group
+        <ExternalLink size={12} />
+      </a>
     </div>
   );
 }
@@ -2609,7 +2707,13 @@ function loadIdentity() {
   try { return JSON.parse(localStorage.getItem(IDENTITY_KEY)); } catch { return null; }
 }
 
+const PORTAL_PARAMS = new URLSearchParams(window.location.search);
+const IS_MFG_PORTAL = PORTAL_PARAMS.get("portal") === "mfg";
+
 export default function App() {
+  if (IS_MFG_PORTAL) {
+    return <MFGPortal clientParam={PORTAL_PARAMS.get("client")} />;
+  }
   const wide = useIsWide();
   const [user, setUser] = useState(undefined);   // undefined = checking auth
   const [profile, setProfileState] = useState(loadIdentity);
