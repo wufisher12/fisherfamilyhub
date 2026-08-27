@@ -4,7 +4,7 @@ import {
   ThumbsUp, MessageCircle, Trash2, Send, Loader2, ChevronDown,
   Fish, RefreshCw, Camera, CornerDownRight, Sun, ArrowRight, LogOut,
   Dumbbell, Droplet, Apple, Target, Moon, Heart, Flame,
-  Power, ClipboardList, Star, Printer, Wallet, KeyRound, ExternalLink, GripVertical,
+  Power, ClipboardList, Star, Wallet, KeyRound, ExternalLink, GripVertical,
   Briefcase, Users, BarChart3, LayoutGrid,
 } from "lucide-react";
 import { auth, db, mfgAuth, mfgDb, configured } from "./lib/firebase.js";
@@ -787,18 +787,6 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
               {weekdayShort(o)}
             </button>
           ))}
-          <button
-            onClick={() => window.print()}
-            title="Print this day's plan"
-            style={{
-              border: `1.5px solid ${T.line}`, background: T.card, color: T.ink,
-              borderRadius: 999, padding: "5px 13px", fontSize: 13, fontWeight: 700,
-              cursor: "pointer", fontFamily: "Inter, sans-serif",
-              display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 6,
-            }}
-          >
-            <Printer size={14} /> Print
-          </button>
         </div>
       </div>
       <div style={{ fontSize: 13.5, color: T.inkSoft, marginBottom: 16, lineHeight: 1.5 }}>
@@ -1024,12 +1012,6 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
       </>
       )}
 
-      <PrintSheet
-        dateKey={dateKey} weekend={targetWeekend}
-        anchors={anchors} wrapup={wrapup}
-        priorities={priorities}
-        w1={w1} w2={w2} fun={fun} dinner={dinner}
-      />
     </div>
   );
 }
@@ -1335,6 +1317,8 @@ function HomeTab({ me, meMatch, members, onGoTab, wide }) {
       </div>
 
 
+
+      <NewsCard />
 
       {/* Photo of the day */}
       <div style={card}>
@@ -1723,87 +1707,6 @@ function ProfileSetup({ members, onDone }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Printable daily plan sheet (hidden on screen, shown when printing) */
-/* ------------------------------------------------------------------ */
-function PrintSheet({ dateKey, weekend, anchors, wrapup, priorities, w1, w2, fun, dinner }) {
-  const box = {
-    display: "inline-block", width: 12, height: 12, border: "1.4px solid #003157",
-    borderRadius: 3, marginRight: 9, verticalAlign: "-2px", flexShrink: 0,
-  };
-  const timeS = { display: "inline-block", width: 62, fontSize: 10, fontWeight: 800, color: "#9C721E" };
-  const rowS = { padding: "3.5px 0", fontSize: 12, color: "#003157", fontFamily: "Arial, sans-serif" };
-  const line = (extra) => <span style={{ display: "inline-block", borderBottom: "1px solid #C9CFD6", minWidth: extra || 300 }}>&nbsp;</span>;
-  const Row = ({ t, children }) => (
-    <div style={rowS}><span style={timeS}>{t}</span><span style={box} />{children}</div>
-  );
-  const Sub = ({ children }) => (
-    <div style={{ ...rowS, paddingLeft: 62 }}><span style={box} />{children}</div>
-  );
-  const Head = ({ children }) => (
-    <div style={{ fontSize: 9.5, fontWeight: 800, color: "#5F6B78", letterSpacing: "0.06em", margin: "8px 0 2px 62px", fontFamily: "Arial, sans-serif" }}>{children}</div>
-  );
-
-  const cleanW1 = (w1 || []).filter((l) => l && l.trim());
-  const cleanW2 = (w2 || []).filter((l) => l && l.trim());
-  const cleanFun = (fun || []).filter((l) => l && l.trim());
-  const pris = (priorities || []).filter((x) => x.text && x.text.trim());
-
-  return (
-    <div id="print-sheet" style={{ maxWidth: 660, margin: "0 auto", padding: "8px 6px" }}>
-      <div style={{ background: "#003157", borderRadius: 10, padding: "14px 18px", marginBottom: 12 }}>
-        <div style={{ color: "#fff", fontSize: 19, fontWeight: 800, fontFamily: "Arial, sans-serif" }}>
-          🐠 Fisher Family Hub — Daily Plan
-        </div>
-        <div style={{ color: "#A8BACB", fontSize: 10.5, marginTop: 3, fontFamily: "Arial, sans-serif" }}>
-          {weekdayOf(0) === fmtDateKey(dateKey).split(",")[0] ? "" : ""}{fmtDateKey(dateKey)} · every check is a vote for the person you're becoming
-        </div>
-      </div>
-
-      <Row t="4:45 AM">Wake up — no snooze, feet on the floor, lights on</Row>
-      {cleanW1.length > 0 && <Head>WORKOUT #1 (5:00 AM)</Head>}
-      {cleanW1.map((l, i) => <Sub key={i}>{l}</Sub>)}
-      {anchors.map((a, i) => <Row key={i} t={a.t}>{a.label}</Row>)}
-
-      {!weekend && (
-        <>
-          <Head>PRIORITY LIST (9:00–3:30) — ★ defines the day</Head>
-          {pris.length === 0 && <Sub>{line(420)}</Sub>}
-          {pris.map((it, i) => (
-            <Sub key={it.id}>{i === 0 ? <strong>★ {it.text}</strong> : <>{i + 1}. {it.text}</>}</Sub>
-          ))}
-          {wrapup.map((a, i) => <Row key={"wu" + i} t={a.t}>{a.label}</Row>)}
-        </>
-      )}
-      {weekend && cleanFun.length > 0 && (
-        <>
-          <Head>PLANS &amp; FAMILY FUN</Head>
-          {cleanFun.map((l, i) => <Sub key={i}>{l}</Sub>)}
-        </>
-      )}
-
-      {cleanW2.length > 0 && <Head>WORKOUT #2 (3:30 PM)</Head>}
-      {cleanW2.map((l, i) => <Sub key={i}>{l}</Sub>)}
-
-      <Row t="4:30 PM">Start dinner{dinner ? <>: <strong>{dinner}</strong></> : <>: {line(260)}</>}</Row>
-      <Row t="5:15 PM">Dinner together — family's home</Row>
-      <Row t="6:00 PM"><strong>Clean up + family time — phone away</strong></Row>
-      <Row t="6:30 PM">Annie down</Row>
-      <Row t="8:30 PM">Sebastian down</Row>
-      <Row t="9:00 PM">Reset the house — set up tomorrow</Row>
-      <Row t="9:30 PM"><strong>In bed</strong> — tomorrow starts tonight</Row>
-
-      <div style={{ marginTop: 12, background: "#F4F5F7", borderRadius: 8, padding: "9px 14px", fontSize: 11, fontWeight: 700, color: "#003157", fontFamily: "Arial, sans-serif" }}>
-        Score: {line(36)} % done &nbsp;&nbsp; Streak at 100%: {line(36)} days
-        <span style={{ float: "right", fontWeight: 400, fontStyle: "italic", color: "#5F6B78" }}>Hard stop at 4:00. The evening is yours. 🐠</span>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  To Do List — the capture pool that feeds the Priority List         */
-/* ------------------------------------------------------------------ */
 function TodoListPage({ wide }) {
   const [tdDoc, saveTd] = useHubDoc("todolist");
   const [drafts, setDrafts] = useState({});
@@ -2733,12 +2636,6 @@ export default function App() {
     style.textContent = `@keyframes spin { to { transform: rotate(360deg); } }
       @keyframes pop { 0% { transform: scale(.5); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
       @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
-      #print-sheet { display: none; }
-      @media print {
-        body { background: #fff !important; }
-        #screen-root { display: none !important; }
-        #print-sheet { display: block !important; }
-      }
       * { -webkit-tap-highlight-color: transparent; }
       button:focus-visible, input:focus-visible { outline: 2px solid ${T.sky}; outline-offset: 2px; }`;
     document.head.appendChild(style);
