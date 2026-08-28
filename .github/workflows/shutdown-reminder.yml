@@ -1,17 +1,16 @@
-name: 3:30 shutdown reminder
+name: Shutdown reminder
 
+# Triggered externally by cron-job.org at 3:25 PM Eastern, weekdays —
+# GitHub's own scheduler is best-effort and was delivering late/never,
+# so the clock now lives outside. workflow_dispatch is the doorbell.
 on:
-  schedule:
-    # 19:30 UTC = 3:30 PM Eastern during daylight saving (Mar–Nov).
-    # In winter change to "30 20 * * 1-5" to stay at 3:30 PM Eastern.
-    - cron: "30 19 * * 1-5"
   workflow_dispatch:
 
 jobs:
   email:
     runs-on: ubuntu-latest
     steps:
-      - name: Send shutdown reminder
+      - name: Send hard-stop reminder
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -21,19 +20,20 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           to: ${{ secrets.MAIL_TO }}
           from: Fisher Family Hub <${{ secrets.MAIL_USERNAME }}>
-          subject: "🐠 3:30 — time to run your shutdown"
+          subject: "🐠 3:30 — hard stop. Workout #2, then shutdown."
           html_body: |
             <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#F4F5F7;border-radius:14px">
-              <h2 style="color:#003157;margin:0 0 8px">Time to close out the day 🐠</h2>
+              <h2 style="color:#003157;margin:0 0 8px">Hard stop in 5 minutes</h2>
               <p style="color:#5F6B78;font-size:15px;line-height:1.5;margin:0 0 20px">
-                Inbox cleared, calendar reviewed, tomorrow decided.
-                Ten minutes now buys a decided morning and a free evening.
+                Close the laptop mid-sentence if you have to. Workout #2 at 3:30 —
+                thirty minutes to break the workday's spine — then run the shutdown at 4:00:
+                emails answered, tomorrow decided.
               </p>
               <a href="https://wufisher12.github.io/fisherfamilyhub/"
-                 style="display:inline-block;background:#C8952C;color:#003157;padding:13px 22px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">
-                Open the hub → run the shutdown
+                 style="display:inline-block;background:#B22234;color:#ffffff;padding:13px 22px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">
+                Open the hub → 4pm Shutdown
               </a>
               <p style="color:#5F6B78;font-size:12px;margin:20px 0 0">
-                Hard stop at 4:00. The evening is yours.
+                Dinner at 4:30. Family's home 5:15. The evening is yours.
               </p>
             </div>
