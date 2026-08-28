@@ -936,6 +936,19 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
                     const next = priorities.filter((x) => x.id !== it.id);
                     setPriorities(next);
                     setTimeout(() => persist({ person: { priorities: next } }), 0);
+                    // If this came from the To Do List, un-schedule it there (back to → PL)
+                    (async () => {
+                      try {
+                        const ref = doc(db, "hub", "todolist");
+                        const snap = await getDoc(ref);
+                        if (!snap.exists()) return;
+                        const d = snap.data();
+                        const mk = d.mike || {};
+                        if ((mk.items || []).some((x) => x.id === it.id)) {
+                          await setDoc(ref, { ...d, mike: { ...mk, items: mk.items.map((x) => x.id === it.id ? { ...x, due: null } : x) } });
+                        }
+                      } catch { /* best effort */ }
+                    })();
                   }} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 17, fontWeight: 700, padding: 2, flexShrink: 0 }}>×</button>
                 </div>
               );
@@ -1732,25 +1745,73 @@ function TodoListPage({ wide }) {
     persist({ items: [...items, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: t, cat: catId, createdAt: Date.now() }] });
   };
 
-  const removeItem = (id) => persist({ items: items.filter((x) => x.id !== id) });
+  const stripFromPlan = async (planKey, itemId) => {
+    const ref = doc(db, "hub", `plan-${planKey}`);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const p = { ...EMPTY_PLAN, ...(data[me] || {}) };
+    const filtered = getPriorities(p).filter((x) => x.id !== itemId);
+    await setDoc(ref, { ...data, [me]: { ...p, priorities: filtered } });
+  };
 
-  const moveToPL = async (item, dateKey) => {
+  const removeItem = async (item) => {
+    try { if (item.due) await stripFromPlan(item.due, item.id); } catch { /* best effort */ }
+    persist({ items: items.filter((x) => x.id !== item.id) });
+  };
+
+  /* Link the task to a day. It STAYS on the To Do List until checked off. */
+  const assignToDay = async (item, dateKey) => {
     try {
-      const ref = doc(db, "hub", `plan-${dateKey}`);
-      const snap = await getDoc(ref);
-      const data = snap.exists() ? snap.data() : {};
-      const p = { ...EMPTY_PLAN, ...(data[me] || {}) };
-      const priorities = [...getPriorities(p), { id: item.id, text: item.text, cat: item.cat, done: false }];
-      await setDoc(ref, { ...data, [me]: { ...p, priorities } });
-      persist({ items: items.filter((x) => x.id !== item.id) });
+      if (item.due && item.due !== dateKey) await stripFromPlan(item.due, item.id);
+      if (item.due !== dateKey) {
+        const ref = doc(db, "hub", `plan-${dateKey}`);
+        const snap = await getDoc(ref);
+        const data = snap.exists() ? snap.data() : {};
+        const p = { ...EMPTY_PLAN, ...(data[me] || {}) };
+        const cur = getPriorities(p);
+        if (!cur.some((x) => x.id === item.id)) {
+          await setDoc(ref, { ...data, [me]: { ...p, priorities: [...cur, { id: item.id, text: item.text, cat: item.cat, done: false }] } });
+        }
+      }
+      persist({ items: items.map((x) => x.id === item.id ? { ...x, due: dateKey } : x) });
       setMovingId(null);
-      setToast(`Moved to ${fmtDateKey(dateKey)} ✓`);
+      setToast(`Scheduled for ${fmtDateKey(dateKey)} ✓`);
       setTimeout(() => setToast(null), 2600);
     } catch (e) {
-      setToast(`Couldn't move it (${e.message})`);
+      setToast(`Couldn't schedule it (${e.message})`);
       setTimeout(() => setToast(null), 3500);
     }
   };
+
+  /* Checking the box is the ONLY thing that clears a task — and it marks
+     the linked day's priority done so the record stays true. */
+  const completeTodo = async (item) => {
+    try {
+      if (item.due) {
+        const ref = doc(db, "hub", `plan-${item.due}`);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          const p = { ...EMPTY_PLAN, ...(data[me] || {}) };
+          const pris = getPriorities(p).map((x) => x.id === item.id ? { ...x, done: true } : x);
+          await setDoc(ref, { ...data, [me]: { ...p, priorities: pris } });
+        }
+      }
+      persist({ items: items.filter((x) => x.id !== item.id) });
+      setToast("Done ✓");
+      setTimeout(() => setToast(null), 2000);
+    } catch (e) {
+      setToast(`Couldn't complete it (${e.message})`);
+      setTimeout(() => setToast(null), 3500);
+    }
+  };
+
+  const fmtShortKey = (key) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "numeric", day: "numeric" });
+  };
+  const todayKey = localDateKey();
 
   const openNotes = (cat) => { setNotesFor(cat); setNotesDraft(notes[cat.id] || ""); };
   const closeNotes = () => {
@@ -1775,9 +1836,10 @@ function TodoListPage({ wide }) {
         To Do List — Mike Fisher
       </div>
       <div style={{ fontSize: 13.5, color: T.inkSoft, marginBottom: 18, lineHeight: 1.5 }}>
-        Capture everything here, free of dates. When something's ready to actually happen,
-        hit <strong style={{ color: T.ink }}>→ PL</strong> and pick its day — it moves onto that day's Priority List.
-        Tap a block's name for running notes.
+        Capture everything here, free of dates. Hit <strong style={{ color: T.ink }}>→ PL</strong> to
+        schedule a task onto a day's Priority List — it stays here, wearing its date, until you
+        <strong style={{ color: T.ink }}> check its box</strong>. That's the only thing that clears it.
+        A red date means it slipped — tap to reschedule. Tap a block's name for running notes.
       </div>
 
       <div style={wide ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" } : undefined}>
@@ -1808,25 +1870,50 @@ function TodoListPage({ wide }) {
                 )}
               </button>
 
-              {catItems.map((it) => (
+              {catItems.map((it) => {
+                const overdue = it.due && it.due < todayKey;
+                return (
                 <div key={it.id} style={{ marginBottom: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 14.5, color: T.ink, lineHeight: 1.4, overflowWrap: "anywhere" }}>{it.text}</span>
                     <button
-                      onClick={() => { setMovingId(movingId === it.id ? null : it.id); setMoveDate(dateKeyOffset(1)); }}
-                      title="Move to a day's Priority List"
+                      onClick={() => completeTodo(it)}
+                      title="Done — clears it from the list"
                       style={{
-                        border: `1.5px solid ${cat.color}`, background: movingId === it.id ? cat.color : "transparent",
-                        color: movingId === it.id ? "#fff" : cat.color,
-                        borderRadius: 8, padding: "3px 9px", fontSize: 12, fontWeight: 800,
-                        cursor: "pointer", fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+                        width: 19, height: 19, borderRadius: 5, flexShrink: 0, cursor: "pointer",
+                        border: `2px solid ${cat.color}`, background: "transparent", padding: 0,
                       }}
-                    >
-                      → PL
-                    </button>
+                    />
+                    <span style={{ flex: 1, fontSize: 14.5, color: T.ink, lineHeight: 1.4, overflowWrap: "anywhere" }}>{it.text}</span>
+                    {it.due ? (
+                      <button
+                        onClick={() => { setMovingId(movingId === it.id ? null : it.id); setMoveDate(it.due); }}
+                        title={overdue ? "Slipped — tap to reschedule" : "Scheduled — tap to change the day"}
+                        style={{
+                          border: `1.5px solid ${overdue ? T.coral : cat.color}`,
+                          background: overdue ? T.coral : "transparent",
+                          color: overdue ? "#fff" : cat.color,
+                          borderRadius: 8, padding: "3px 9px", fontSize: 11.5, fontWeight: 800,
+                          cursor: "pointer", fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+                        }}
+                      >
+                        {fmtShortKey(it.due)}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setMovingId(movingId === it.id ? null : it.id); setMoveDate(dateKeyOffset(1)); }}
+                        title="Schedule onto a day's Priority List"
+                        style={{
+                          border: `1.5px solid ${cat.color}`, background: movingId === it.id ? cat.color : "transparent",
+                          color: movingId === it.id ? "#fff" : cat.color,
+                          borderRadius: 8, padding: "3px 9px", fontSize: 12, fontWeight: 800,
+                          cursor: "pointer", fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+                        }}
+                      >
+                        → PL
+                      </button>
+                    )}
                     <button
-                      onClick={() => removeItem(it.id)}
+                      onClick={() => removeItem(it)}
                       style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 16, fontWeight: 700, padding: "0 2px" }}
                     >×</button>
                   </div>
@@ -1838,12 +1925,12 @@ function TodoListPage({ wide }) {
                         style={{ ...inputS, width: "auto", padding: "6px 9px" }}
                       />
                       <button
-                        onClick={() => moveDate && moveToPL(it, moveDate)}
+                        onClick={() => moveDate && assignToDay(it, moveDate)}
                         style={{
                           border: "none", background: T.marigold, color: T.ink, borderRadius: 8,
                           padding: "7px 13px", cursor: "pointer", fontWeight: 800, fontSize: 12.5, fontFamily: "Inter, sans-serif",
                         }}
-                      >Move</button>
+                      >Save</button>
                       <button
                         onClick={() => setMovingId(null)}
                         style={{ border: "none", background: "transparent", color: T.inkSoft, cursor: "pointer", fontSize: 12.5, fontWeight: 700, fontFamily: "Inter, sans-serif" }}
@@ -1851,7 +1938,8 @@ function TodoListPage({ wide }) {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                 <input
