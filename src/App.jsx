@@ -10,7 +10,6 @@ import {
 import { auth, db, mfgAuth, mfgDb, configured } from "./lib/firebase.js";
 import * as appConfig from "./firebase-config.js";
 const familyEmail = appConfig.familyEmail;
-const googleClientId = appConfig.googleClientId || null;
 import { HUB_EMAIL } from "./firebase-config.js";
 import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut,
@@ -503,150 +502,48 @@ function WorkoutLines({ lines, setLines, onBlur, placeholder }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Google Calendar (read-only, Mike's device)                         */
+/*  Calendar — read from Firestore (synced every 30 min by Actions)    */
 /* ------------------------------------------------------------------ */
-let gisPromise = null;
-function loadGis() {
-  if (gisPromise) return gisPromise;
-  gisPromise = new Promise((resolve, reject) => {
-    if (window.google && window.google.accounts && window.google.accounts.oauth2) return resolve();
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client";
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("Couldn't load Google sign-in"));
-    document.head.appendChild(s);
-  });
-  return gisPromise;
-}
-
-function getStoredGToken() {
-  try {
-    const t = JSON.parse(localStorage.getItem("gcal_token"));
-    if (t && t.expiry > Date.now() + 60000) return t;
-  } catch { /* none */ }
-  return null;
-}
-
-async function requestGToken(silent) {
-  await loadGis();
-  return new Promise((resolve, reject) => {
-    const tc = window.google.accounts.oauth2.initTokenClient({
-      client_id: googleClientId,
-      scope: "https://www.googleapis.com/auth/calendar.readonly",
-      callback: (resp) => {
-        if (resp.error) return reject(new Error(resp.error));
-        const tok = {
-          access_token: resp.access_token,
-          expiry: Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000,
-        };
-        localStorage.setItem("gcal_token", JSON.stringify(tok));
-        localStorage.setItem("gcal_connected", "1");
-        resolve(tok);
-      },
-      error_callback: (e) => reject(new Error((e && e.message) || "Google sign-in was closed")),
-    });
-    tc.requestAccessToken({ prompt: silent ? "" : "consent" });
-  });
-}
-
-async function ensureGToken(interactive) {
-  const t = getStoredGToken();
-  if (t) return t;
-  if (interactive) return requestGToken(false);
-  if (localStorage.getItem("gcal_connected")) {
-    try { return await requestGToken(true); } catch { return null; }
-  }
-  return null;
-}
-
 function CalendarCard({ dateKey, title, bare }) {
-  const [state, setState] = useState({ status: "loading", events: [] });
-
-  const load = useCallback(async (interactive) => {
-    if (!googleClientId) { setState({ status: "unconfigured", events: [] }); return; }
-    setState((s) => ({ ...s, status: "loading" }));
-    try {
-      const tok = await ensureGToken(interactive);
-      if (!tok) { setState({ status: "disconnected", events: [] }); return; }
-      const [y, m, d] = dateKey.split("-").map(Number);
-      const start = new Date(y, m - 1, d);
-      const end = new Date(y, m - 1, d + 1);
-      const url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
-        + "?singleEvents=true&orderBy=startTime&maxResults=15"
-        + `&timeMin=${encodeURIComponent(start.toISOString())}`
-        + `&timeMax=${encodeURIComponent(end.toISOString())}`;
-      const resp = await fetch(url, { headers: { Authorization: `Bearer ${tok.access_token}` } });
-      if (resp.status === 401 || resp.status === 403) {
-        localStorage.removeItem("gcal_token");
-        setState({ status: "disconnected", events: [] });
-        return;
-      }
-      if (!resp.ok) throw new Error(`calendar service ${resp.status}`);
-      const data = await resp.json();
-      setState({ status: "ok", events: data.items || [] });
-    } catch (e) {
-      setState({ status: "error", events: [], err: e.message });
-    }
-  }, [dateKey]);
-
-  useEffect(() => { load(false); }, [load]);
-
-  if (state.status === "unconfigured") return null;
+  const [cal] = useHubDoc("calendar");
 
   const card = bare ? {} : {
     background: T.card, borderRadius: 14, padding: "14px 16px",
     border: `1px solid ${T.line}`, marginBottom: 14,
   };
 
+  if (cal === undefined) {
+    return (
+      <div style={card}>
+        {!bare && <SectionTitle>{title}</SectionTitle>}
+        <div style={{ color: T.inkSoft, fontSize: 13.5 }}>Checking the calendar…</div>
+      </div>
+    );
+  }
+
+  const events = ((cal || {}).days || {})[dateKey] || [];
+
   return (
     <div style={card}>
       {!bare && <SectionTitle>{title}</SectionTitle>}
-      {state.status === "loading" && (
-        <div style={{ color: T.inkSoft, fontSize: 13.5 }}>Checking the calendar…</div>
-      )}
-      {state.status === "disconnected" && (
-        <div>
-          <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5, marginBottom: 10 }}>
-            Connect your Google Calendar to see the day's events here. Read-only — the hub can look, never touch.
+      {!cal ? (
+        <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5 }}>
+          Calendar sync hasn't run yet — kick off the "Calendar sync" workflow once and events appear here.
+        </div>
+      ) : events.length === 0 ? (
+        <div style={{ fontSize: 13.5, color: T.inkSoft }}>Nothing on the calendar — a clear runway.</div>
+      ) : (
+        events.map((ev, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 8, padding: "4px 0", alignItems: "start" }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: T.marigoldDeep, paddingTop: 2, whiteSpace: "nowrap" }}>{ev.t}</span>
+            <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.45 }}>{ev.title}</span>
           </div>
-          <button
-            onClick={() => load(true)}
-            style={{
-              border: "none", background: T.marigold, color: T.ink, borderRadius: 10,
-              padding: "9px 16px", cursor: "pointer", fontWeight: 800, fontSize: 13.5,
-              fontFamily: "Inter, sans-serif",
-            }}
-          >
-            Connect Google Calendar
-          </button>
-        </div>
+        ))
       )}
-      {state.status === "error" && (
-        <div style={{ fontSize: 13, color: T.coral, lineHeight: 1.5 }}>
-          Calendar hiccup ({state.err}).{" "}
-          <button onClick={() => load(true)} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontWeight: 800, padding: 0, textDecoration: "underline", fontFamily: "Inter, sans-serif", fontSize: 13 }}>
-            Try again
-          </button>
+      {cal && cal.updated && (
+        <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 6 }}>
+          Synced {new Date(cal.updated).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
         </div>
-      )}
-      {state.status === "ok" && (
-        state.events.length === 0 ? (
-          <div style={{ fontSize: 13.5, color: T.inkSoft }}>Nothing on the calendar — a clear runway.</div>
-        ) : (
-          state.events.map((ev) => {
-            const timed = ev.start && ev.start.dateTime;
-            const label = timed
-              ? new Date(ev.start.dateTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-              : "All day";
-            return (
-              <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 8, padding: "4px 0", alignItems: "start" }}>
-                <span style={{ fontSize: 11.5, fontWeight: 800, color: T.marigoldDeep, paddingTop: 2, whiteSpace: "nowrap" }}>{label}</span>
-                <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.45 }}>{ev.summary || "(no title)"}</span>
-              </div>
-            );
-          })
-        )
       )}
     </div>
   );
@@ -1036,98 +933,66 @@ function PlanTab({ meMatch, meName, wide, onGoTab }) {
 /*  Home page cards — upcoming events, news, pulse placeholders        */
 /* ------------------------------------------------------------------ */
 function UpcomingCard() {
-  const [state, setState] = useState({ status: "loading", days: [] });
+  const [cal] = useHubDoc("calendar");
 
-  const load = useCallback(async (interactive) => {
-    if (!googleClientId) { setState({ status: "unconfigured", days: [] }); return; }
-    setState((s) => ({ ...s, status: "loading" }));
-    try {
-      const tok = await ensureGToken(interactive);
-      if (!tok) { setState({ status: "disconnected", days: [] }); return; }
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 4);
-      const url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
-        + "?singleEvents=true&orderBy=startTime&maxResults=30"
-        + `&timeMin=${encodeURIComponent(start.toISOString())}`
-        + `&timeMax=${encodeURIComponent(end.toISOString())}`;
-      const resp = await fetch(url, { headers: { Authorization: `Bearer ${tok.access_token}` } });
-      if (resp.status === 401 || resp.status === 403) {
-        localStorage.removeItem("gcal_token");
-        setState({ status: "disconnected", days: [] });
-        return;
-      }
-      if (!resp.ok) throw new Error(`calendar ${resp.status}`);
-      const data = await resp.json();
-      const byDay = new Map();
-      for (const ev of data.items || []) {
-        const s = ev.start && (ev.start.dateTime || ev.start.date);
-        if (!s) continue;
-        const d = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(s + "T12:00:00");
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        if (!byDay.has(key)) byDay.set(key, []);
-        byDay.get(key).push(ev);
-      }
-      const days = [];
-      for (let i = 0; i < 4; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        days.push({
-          key,
-          label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "long" }),
-          events: byDay.get(key) || [],
-        });
-      }
-      setState({ status: "ok", days });
-    } catch (e) {
-      setState({ status: "error", days: [], err: e.message });
-    }
-  }, []);
+  const card = {
+    background: T.card, borderRadius: 14, padding: "16px 18px",
+    border: `1px solid ${T.line}`, marginBottom: 14,
+  };
 
-  useEffect(() => { load(false); }, [load]);
-  if (state.status === "unconfigured") return null;
+  if (cal === undefined) {
+    return (
+      <div style={card}>
+        <SectionTitle>Upcoming — next few days</SectionTitle>
+        <div style={{ color: T.inkSoft, fontSize: 13.5 }}>Checking the calendar…</div>
+      </div>
+    );
+  }
+
+  const dayList = [];
+  for (let i = 0; i < 4; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    dayList.push({
+      key,
+      label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "long" }),
+      events: ((cal || {}).days || {})[key] || [],
+    });
+  }
 
   return (
-    <div style={{ background: T.card, borderRadius: 14, padding: "16px 18px", border: `1px solid ${T.line}`, marginBottom: 14 }}>
+    <div style={card}>
       <SectionTitle>Upcoming — next few days</SectionTitle>
-      {state.status === "loading" && <div style={{ color: T.inkSoft, fontSize: 13.5 }}>Checking the calendar…</div>}
-      {state.status === "disconnected" && (
-        <button onClick={() => load(true)} style={{
-          border: "none", background: T.marigold, color: T.ink, borderRadius: 10,
-          padding: "9px 16px", cursor: "pointer", fontWeight: 800, fontSize: 13.5, fontFamily: "Inter, sans-serif",
-        }}>Connect Google Calendar</button>
-      )}
-      {state.status === "error" && (
-        <div style={{ fontSize: 13, color: T.coral }}>
-          Calendar hiccup.{" "}
-          <button onClick={() => load(true)} style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontWeight: 800, padding: 0, textDecoration: "underline", fontFamily: "Inter, sans-serif", fontSize: 13 }}>Try again</button>
+      {!cal ? (
+        <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5 }}>
+          Calendar sync hasn't run yet — run the "Calendar sync" workflow once and the next few days appear here.
         </div>
-      )}
-      {state.status === "ok" && state.days.map((day) => (
-        <div key={day.key} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
-            {day.label}
-          </div>
-          {day.events.length === 0 ? (
-            <div style={{ fontSize: 13, color: T.inkSoft, padding: "1px 0" }}>Clear.</div>
-          ) : day.events.map((ev) => {
-            const timed = ev.start && ev.start.dateTime;
-            const label = timed
-              ? new Date(ev.start.dateTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-              : "All day";
-            return (
-              <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 8, padding: "2.5px 0" }}>
-                <span style={{ fontSize: 11.5, fontWeight: 800, color: T.inkSoft, whiteSpace: "nowrap", paddingTop: 2 }}>{label}</span>
-                <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.4 }}>{ev.summary || "(no title)"}</span>
+      ) : (
+        dayList.map((day) => (
+          <div key={day.key} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: T.marigoldDeep, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+              {day.label}
+            </div>
+            {day.events.length === 0 ? (
+              <div style={{ fontSize: 13, color: T.inkSoft, padding: "1px 0" }}>Clear.</div>
+            ) : day.events.map((ev, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 8, padding: "2.5px 0" }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, color: T.inkSoft, whiteSpace: "nowrap", paddingTop: 2 }}>{ev.t}</span>
+                <span style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.4 }}>{ev.title}</span>
               </div>
-            );
-          })}
+            ))}
+          </div>
+        ))
+      )}
+      {cal && cal.updated && (
+        <div style={{ fontSize: 10.5, color: T.inkSoft }}>
+          Synced {new Date(cal.updated).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
         </div>
-      ))}
+      )}
     </div>
   );
 }
-
 function NewsCard() {
   const [newsDoc] = useHubDoc("news");
   const card = { background: T.card, borderRadius: 14, padding: "16px 18px", border: `1px solid ${T.line}`, marginBottom: 14 };
