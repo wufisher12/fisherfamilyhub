@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function userEmail() {
+      return request.auth.token.email;
+    }
+    function isFamily() {
+      return request.auth != null && userEmail() == 'family@fisherhub.local';
+    }
+    // Read-only account used by the 4:30 AM morning brief. Its rules grant
+    // read access to plan-* documents ONLY — nothing else, and never writes.
+    function isBrief() {
+      return request.auth != null && userEmail() == 'brief@fisherhub.local';
+    }
+    function hasRole() {
+      return request.auth != null
+        && exists(/databases/$(db)/documents/mfgRoles/$(userEmail()));
+    }
+    function myRole() {
+      return get(/databases/$(db)/documents/mfgRoles/$(userEmail())).data;
+    }
+    function isTeam() {
+      return hasRole() && myRole().role == 'team';
+    }
+    function isClientFor(docId) {
+      return hasRole()
+        && myRole().role == 'client'
+        && docId == 'mfg-client-' + myRole().clientId;
+    }
+
+    match /mfgRoles/{email} {
+      allow read: if request.auth != null && userEmail() == email;
+      allow write: if isTeam();
+    }
+
+    match /hub/{docId} {
+      allow read: if docId.matches('mfg-.*')
+        ? (isTeam() || isClientFor(docId))
+        : (isFamily() || (isBrief() && docId.matches('plan-.*')));
+      allow write: if docId.matches('mfg-.*')
+        ? (isTeam() || isClientFor(docId))
+        : isFamily();
+    }
+  }
+}
