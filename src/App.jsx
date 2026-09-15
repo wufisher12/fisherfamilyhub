@@ -10,7 +10,6 @@ import {
 import { auth, db, mfgAuth, mfgDb, configured } from "./lib/firebase.js";
 import * as appConfig from "./firebase-config.js";
 const familyEmail = appConfig.familyEmail;
-import { HUB_EMAIL } from "./firebase-config.js";
 import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut,
 } from "firebase/auth";
