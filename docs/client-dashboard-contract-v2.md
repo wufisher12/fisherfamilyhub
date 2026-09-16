@@ -47,7 +47,10 @@ every client can differ. Look, colors, and typography are owned by the hub.
           "type": "table",
           "title": "Top units by revenue",
           "columns": ["Unit", "Revenue", "Occ %"],
-          "rows": [["Ridge Cabin", "$84K", "78%"], ["Creekside", "$71K", "74%"]]
+          "rows": [
+            { "cells": ["Ridge Cabin", "$84K", "78%"] },
+            { "cells": ["Creekside", "$71K", "74%"] }
+          ]
         },
         { "type": "note", "text": "One line of context worth showing the client." }
       ]
@@ -59,6 +62,9 @@ every client can differ. Look, colors, and typography are owned by the hub.
 
 ## Rules
 - Section `type` is one of: `tiles`, `chart`, `table`, `note`. Anything else is ignored.
+- Table rows are maps, `{"cells": [...]}` — **Firestore rejects arrays nested
+  directly inside arrays**, so `[[...], [...]]` can never be stored (amended
+  2026-09-15; the hub renderer accepts both shapes for JSON-side previews).
 - `chart.kind` is `line` or `bar`. `format` is `currency`, `percent`, or `number`.
 - `value` and `delta` are pre-formatted display strings; the hub never does math.
 - `dir` is `up` / `down` / `flat` and means "is this good news," not the sign.

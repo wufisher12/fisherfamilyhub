@@ -34,10 +34,10 @@
           "title": "Top units by revenue · trailing 90 days",
           "columns": ["Unit", "Revenue", "Occ %", "ADR"],
           "rows": [
-            ["Ridge Cabin", "$84K", "78%", "$412"],
-            ["Creekside", "$71K", "74%", "$385"],
-            ["Bearpaw Lodge", "$66K", "81%", "$344"],
-            ["Timber Hollow", "$58K", "69%", "$367"]
+            { "cells": ["Ridge Cabin", "$84K", "78%", "$412"] },
+            { "cells": ["Creekside", "$71K", "74%", "$385"] },
+            { "cells": ["Bearpaw Lodge", "$66K", "81%", "$344"] },
+            { "cells": ["Timber Hollow", "$58K", "69%", "$367"] }
           ]
         },
         { "type": "note", "text": "Fall foliage weekends are already 70% booked — holding rates firm through Columbus Day." }

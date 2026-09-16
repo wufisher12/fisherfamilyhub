@@ -2374,7 +2374,9 @@ function MfgTableSection({ section }) {
         <tbody>
           {rows.map((r, ri) => (
             <tr key={ri}>
-              {(Array.isArray(r) ? r : []).map((cell, ci) => (
+              {/* Canonical row shape is {cells:[...]} (Firestore can't nest
+                  arrays in arrays); plain arrays are accepted too. */}
+              {(Array.isArray(r) ? r : Array.isArray(r?.cells) ? r.cells : []).map((cell, ci) => (
                 <td key={ci} style={{
                   textAlign: ci === 0 ? "left" : "right", fontSize: 13.5, color: T.ink,
                   fontWeight: ci === 0 ? 700 : 500, padding: "9px 10px", borderTop: `1px solid ${T.line}`, whiteSpace: "nowrap",
