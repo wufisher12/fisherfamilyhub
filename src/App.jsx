@@ -2181,7 +2181,7 @@ function fmtAxisValue(v, format) {
   if (typeof v !== "number" || !isFinite(v)) return "";
   const sign = v < 0 ? "-" : "";
   const a = Math.abs(v);
-  const compact = a >= 1e6 ? `${+(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${Math.round(a / 1e3)}K` : `${+a.toFixed(0)}`;
+  const compact = a >= 1e6 ? `${+(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${+(a / 1e3).toFixed(a < 1e4 ? 1 : 0)}K` : `${+a.toFixed(0)}`;
   if (format === "percent") return `${sign}${+a.toFixed(1)}%`;
   if (format === "currency") return `${sign}$${compact}`;
   return `${sign}${compact}`;
