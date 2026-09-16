@@ -14,6 +14,8 @@ import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut,
 } from "firebase/auth";
 import { doc, onSnapshot, setDoc, deleteDoc, getDoc } from "firebase/firestore";
+// Contract-v2 sample dashboard for ?portal=mfg&client=…&sample=1 previews.
+import SAMPLE_DASHBOARD from "../docs/sample-client-dashboard.json";
 
 /* ------------------------------------------------------------------ */
 /*  Design tokens                                                      */
@@ -2152,14 +2154,288 @@ function MFGLogin({ onError, error }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Client dashboard renderer — docs/client-dashboard-contract-v2.md   */
+/*  Writers own WHAT (tabs/sections/values, pre-formatted strings);    */
+/*  this code owns HOW IT LOOKS. Section types: tiles/chart/table/note.*/
+/* ------------------------------------------------------------------ */
+
+// Read-only live subscription on the portal's own app instance, so a
+// client login's session (mfgAuth) is the one the rules evaluate.
+function useMfgHubDoc(path) {
+  const [data, setData] = useState(undefined); // undefined = loading, null = missing
+  useEffect(() => {
+    if (!path) return;
+    setData(undefined);
+    const unsub = onSnapshot(
+      doc(mfgDb, "hub", path),
+      (snap) => setData(snap.exists() ? snap.data() : null),
+      () => setData(null),
+    );
+    return unsub;
+  }, [path]);
+  return data;
+}
+
+// Chart series colors, assigned in fixed order (never cycled). Chosen from
+// the brand family and validated colorblind-safe + >=3:1 on white.
+const MFG_SERIES = ["#1F6FB2", "#A87415", "#7A4FA3", "#B0402F"];
+
+// dir means "is this good news", not the sign of the number.
+const MFG_DIR_COLOR = { up: T.leaf, down: T.coral, flat: T.inkSoft };
+
+function fmtAxisValue(v, format) {
+  if (typeof v !== "number" || !isFinite(v)) return "";
+  const sign = v < 0 ? "-" : "";
+  const a = Math.abs(v);
+  const compact = a >= 1e6 ? `${+(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${Math.round(a / 1e3)}K` : `${+a.toFixed(0)}`;
+  if (format === "percent") return `${sign}${+a.toFixed(1)}%`;
+  if (format === "currency") return `${sign}$${compact}`;
+  return `${sign}${compact}`;
+}
+
+function fmtFullValue(v, format) {
+  if (typeof v !== "number" || !isFinite(v)) return "";
+  if (format === "percent") return `${+v.toFixed(1)}%`;
+  if (format === "currency") return `${v < 0 ? "-" : ""}$${Math.abs(Math.round(v)).toLocaleString()}`;
+  return v.toLocaleString();
+}
+
+function niceCeil(v) {
+  if (v <= 0) return 0;
+  const m = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / m;
+  return (n <= 1 ? 1 : n <= 1.5 ? 1.5 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 3 ? 3 : n <= 4 ? 4 : n <= 5 ? 5 : n <= 8 ? 8 : 10) * m;
+}
+
+function MfgSectionTitle({ children }) {
+  return (
+    <div style={{ fontSize: 11.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+      {children}
+    </div>
+  );
+}
+
+function MfgTilesSection({ section }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+        {(section.items || []).map((it, i) => (
+          <div key={i} style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.06em" }}>{it.label}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", margin: "6px 0 2px" }}>
+              <span style={{ fontSize: 26, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{it.value}</span>
+              {it.delta && (
+                <span style={{ fontSize: 13, fontWeight: 800, color: MFG_DIR_COLOR[it.dir] || T.inkSoft }}>{it.delta}</span>
+              )}
+            </div>
+            {it.hint && <div style={{ fontSize: 11.5, color: T.inkSoft, lineHeight: 1.45 }}>{it.hint}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MfgChartSection({ section }) {
+  const [hover, setHover] = useState(null);
+  const xLabels = Array.isArray(section.xLabels) ? section.xLabels : [];
+  const series = (Array.isArray(section.series) ? section.series : [])
+    .filter((s) => s && Array.isArray(s.values)).slice(0, MFG_SERIES.length);
+  const card = { background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16 };
+  if (!xLabels.length || !series.length) {
+    return (
+      <div style={card}>
+        {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
+        <div style={{ fontSize: 13, color: T.inkSoft }}>No chart data.</div>
+      </div>
+    );
+  }
+
+  const isLine = section.kind === "line";
+  const W = 640, H = 240, padL = 48, padR = 10, padT = 10, padB = 26;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const all = series.flatMap((s) => s.values).filter((v) => typeof v === "number" && isFinite(v));
+  const rawMin = Math.min(0, ...all); // zero baseline unless data goes negative
+  const max = niceCeil(Math.max(1e-9, ...all)) || 1;
+  const min = rawMin < 0 ? -niceCeil(-rawMin) : 0;
+  const y = (v) => padT + innerH * (1 - (v - min) / (max - min));
+  const gw = innerW / xLabels.length;
+  const ticks = [0, 1, 2, 3, 4].map((i) => min + ((max - min) * i) / 4);
+
+  // Bars: rounded 4px data-end, flat at the baseline, 2px gap between bars.
+  const barPath = (x, v, bw) => {
+    const y0 = y(0), y1 = y(v);
+    const top = Math.min(y0, y1), h = Math.abs(y0 - y1);
+    const r = Math.min(4, bw / 2, h);
+    if (h < 0.5) return "";
+    return v >= 0
+      ? `M${x},${top + h} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${top + h} Z`
+      : `M${x},${top} V${top + h - r} Q${x},${top + h} ${x + r},${top + h} H${x + bw - r} Q${x + bw},${top + h} ${x + bw},${top + h - r} V${top} Z`;
+  };
+
+  return (
+    <div style={card}>
+      {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
+      {series.length >= 2 && (
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
+          {series.map((s, si) => (
+            <span key={si} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: T.inkSoft }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: MFG_SERIES[si] }} />
+              {s.name || `Series ${si + 1}`}
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ position: "relative" }} onMouseLeave={() => setHover(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+          {ticks.map((t, i) => (
+            <g key={i}>
+              <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke={t === 0 ? "#C9CFD6" : T.line} strokeWidth={1} />
+              <text x={padL - 6} y={y(t) + 3.5} textAnchor="end" fontSize={10} fill={T.inkSoft} fontFamily="Inter, sans-serif">
+                {fmtAxisValue(t, section.format)}
+              </text>
+            </g>
+          ))}
+          {xLabels.map((xl, i) => (
+            <text key={i} x={padL + gw * (i + 0.5)} y={H - 8} textAnchor="middle" fontSize={10} fill={T.inkSoft} fontFamily="Inter, sans-serif">
+              {xl}
+            </text>
+          ))}
+          {!isLine && xLabels.map((_, i) => {
+            const k = series.length;
+            const areaW = gw * 0.68;
+            const bw = Math.max(2, (areaW - 2 * (k - 1)) / k);
+            const x0 = padL + gw * i + (gw - areaW) / 2;
+            return series.map((s, si) => {
+              const v = s.values[i];
+              if (typeof v !== "number" || !isFinite(v)) return null;
+              return (
+                <path key={`${i}-${si}`} d={barPath(x0 + si * (bw + 2), v, bw)}
+                  fill={MFG_SERIES[si]} opacity={hover === null || hover === i ? 1 : 0.45} />
+              );
+            });
+          })}
+          {isLine && series.map((s, si) => {
+            const pts = s.values
+              .map((v, i) => (typeof v === "number" && isFinite(v) ? `${padL + gw * (i + 0.5)},${y(v)}` : null))
+              .filter(Boolean).join(" ");
+            return (
+              <g key={si}>
+                <polyline points={pts} fill="none" stroke={MFG_SERIES[si]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                {s.values.map((v, i) =>
+                  typeof v === "number" && isFinite(v) ? (
+                    <circle key={i} cx={padL + gw * (i + 0.5)} cy={y(v)} r={hover === i ? 4.5 : 3.5}
+                      fill="#fff" stroke={MFG_SERIES[si]} strokeWidth={2} />
+                  ) : null,
+                )}
+              </g>
+            );
+          })}
+          {xLabels.map((_, i) => (
+            <rect key={i} x={padL + gw * i} y={padT} width={gw} height={innerH}
+              fill="transparent" onMouseEnter={() => setHover(i)} />
+          ))}
+        </svg>
+        {hover !== null && (
+          <div style={{
+            position: "absolute", top: 0, left: `${((padL + gw * (hover + 0.5)) / W) * 100}%`,
+            transform: `translateX(${hover >= xLabels.length / 2 ? "-105%" : "5%"})`,
+            background: T.ink, color: "#fff", borderRadius: 10, padding: "8px 11px",
+            fontSize: 12, pointerEvents: "none", whiteSpace: "nowrap", zIndex: 5,
+            boxShadow: "0 4px 14px rgba(0,49,87,.25)",
+          }}>
+            <div style={{ fontWeight: 800, marginBottom: 3 }}>{xLabels[hover]}</div>
+            {series.map((s, si) => (
+              <div key={si} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: MFG_SERIES[si] }} />
+                <span style={{ color: "#C7D2DC" }}>{s.name || `Series ${si + 1}`}</span>
+                <span style={{ fontWeight: 800, marginLeft: "auto", paddingLeft: 8 }}>{fmtFullValue(s.values[hover], section.format)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MfgTableSection({ section }) {
+  const columns = Array.isArray(section.columns) ? section.columns : [];
+  const rows = Array.isArray(section.rows) ? section.rows : [];
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
+      {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {columns.map((c, i) => (
+              <th key={i} style={{
+                textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 800, color: T.inkSoft,
+                textTransform: "uppercase", letterSpacing: "0.05em", padding: "4px 10px 8px", whiteSpace: "nowrap",
+              }}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => (
+            <tr key={ri}>
+              {(Array.isArray(r) ? r : []).map((cell, ci) => (
+                <td key={ci} style={{
+                  textAlign: ci === 0 ? "left" : "right", fontSize: 13.5, color: T.ink,
+                  fontWeight: ci === 0 ? 700 : 500, padding: "9px 10px", borderTop: `1px solid ${T.line}`, whiteSpace: "nowrap",
+                }}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MfgNoteSection({ section }) {
+  return (
+    <div style={{ background: T.skySoft, borderRadius: 12, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: T.ink, lineHeight: 1.55 }}>
+      {section.text}
+    </div>
+  );
+}
+
+function MfgComingSoon({ text }) {
+  return (
+    <div style={{
+      textAlign: "center", padding: "48px 20px", color: T.inkSoft, fontSize: 13.5,
+      background: "#fff", borderRadius: 14, border: `1px dashed ${T.line}`, lineHeight: 1.5,
+    }}>{text || "Coming soon — this view is being built."}</div>
+  );
+}
+
+// Unknown section types are ignored per the contract.
+function MfgSection({ section }) {
+  if (!section || typeof section !== "object") return null;
+  if (section.type === "tiles") return <MfgTilesSection section={section} />;
+  if (section.type === "chart") return <MfgChartSection section={section} />;
+  if (section.type === "table") return <MfgTableSection section={section} />;
+  if (section.type === "note") return <MfgNoteSection section={section} />;
+  return null;
+}
+
 function MfgClientScreen({ client, isTeam, onSignOut }) {
-  const [tab, setTab] = useState("overview");
-  const tabs = [
-    { id: "overview", label: "Overview" },
-    { id: "revenue", label: "Revenue KPIs" },
-    { id: "pacing", label: "Pacing" },
-    { id: "goals", label: "Goals" },
-  ];
+  // ?sample=1 previews the bundled sample document without live data.
+  const sample = new URLSearchParams(window.location.search).has("sample");
+  const liveDoc = useMfgHubDoc(sample ? null : `mfg-client-${client.id}`);
+  const dash = sample ? SAMPLE_DASHBOARD : liveDoc;
+
+  const tabs = Array.isArray(dash?.tabs) ? dash.tabs.filter((t) => t && t.id && t.label) : [];
+  const [tabId, setTabId] = useState(null);
+  const activeTab = tabs.find((t) => t.id === tabId) || tabs[0] || null;
+
+  const updatedText = typeof dash?.updated === "number"
+    ? new Date(dash.updated).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+    : null;
+
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
       <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
@@ -2179,58 +2455,42 @@ function MfgClientScreen({ client, isTeam, onSignOut }) {
               <button onClick={onSignOut} style={{ border: "none", background: "transparent", color: "#A8BACB", cursor: "pointer", fontSize: 12.5, fontWeight: 700, fontFamily: "Inter, sans-serif" }}>Sign out</button>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 2, marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 2, marginTop: 12, flexWrap: "wrap" }}>
             {tabs.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
+              <button key={t.id} onClick={() => setTabId(t.id)} style={{
                 border: "none", background: "transparent", cursor: "pointer",
-                color: tab === t.id ? "#fff" : "#8FA3B5", padding: "10px 14px 12px",
+                color: activeTab && t.id === activeTab.id ? "#fff" : "#8FA3B5", padding: "10px 14px 12px",
                 fontSize: 13.5, fontWeight: 700, fontFamily: "Inter, sans-serif",
-                borderBottom: `3px solid ${tab === t.id ? MFG_RED : "transparent"}`,
+                borderBottom: `3px solid ${activeTab && t.id === activeTab.id ? MFG_RED : "transparent"}`,
               }}>{t.label}</button>
             ))}
+            {tabs.length === 0 && <div style={{ height: 12 }} />}
           </div>
         </div>
       </div>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "22px 20px 60px" }}>
-        {tab === "overview" && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-              <MfgKpiTile label="2026 Revenue YoY" hint="vs 2025, received basis" />
-              <MfgKpiTile label="Adjusted RevPAR YoY" hint="2026 vs 2025" />
-              <MfgKpiTile label="WoW Rent Revenue Pickup" hint="net new rent revenue booked this week" />
-              <MfgKpiTile label="Next 60 Days Pacing" hint="APO vs last year · vs market" />
-            </div>
-            <MfgShellNote>
-              Dashboard shell — the data engine (PMS exports → nightly processing → these tiles) arrives in the Company build phase.
-            </MfgShellNote>
-          </>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "18px 20px 60px" }}>
+        {dash === undefined && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "60px 0", color: T.inkSoft }}>
+            <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
+          </div>
         )}
-        {tab === "revenue" && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-              <MfgKpiTile label="Rent Revenue · MTD" />
-              <MfgKpiTile label="Rent Revenue · YTD" hint="vs last year" />
-              <MfgKpiTile label="Adjusted RevPAR" hint="trailing 12 months" />
-              <MfgKpiTile label="ADR / Occupancy" />
-            </div>
-            <MfgShellNote>Monthly revenue chart and YoY table render here once client data is flowing.</MfgShellNote>
-          </>
+        {dash === null && (
+          <MfgComingSoon text="Dashboard coming soon — your numbers land here once the data feed is live." />
         )}
-        {tab === "pacing" && (
+        {dash && (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-              <MfgKpiTile label="Next 30 Days APO" hint="vs LY · vs market" />
-              <MfgKpiTile label="Next 60 Days APO" hint="vs LY · vs market" />
-              <MfgKpiTile label="Booking Window" />
-              <MfgKpiTile label="Pickup Trend" hint="4-week view" />
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              {sample && (
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: T.marigoldDeep, borderRadius: 999, padding: "2px 9px" }}>SAMPLE DATA</span>
+              )}
+              {updatedText && (
+                <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>As of {updatedText}</span>
+              )}
             </div>
-            <MfgShellNote>Pacing curves (on-the-books vs LY vs market) land here with the data engine.</MfgShellNote>
+            {activeTab && activeTab.sections?.length > 0
+              ? activeTab.sections.map((s, i) => <MfgSection key={i} section={s} />)
+              : <MfgComingSoon />}
           </>
-        )}
-        {tab === "goals" && (
-          <MfgShellNote>
-            Per-client goals and targets (set together, tracked monthly) will live here — revenue targets, RevPAR goals, and the wins worth telling on LinkedIn.
-          </MfgShellNote>
         )}
       </div>
     </div>

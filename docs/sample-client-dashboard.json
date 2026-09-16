@@ -1,0 +1,75 @@
+{
+  "clientId": "bearcamp",
+  "label": "Bear Camp Cabin Rentals",
+  "updated": 1789459200000,
+  "asOf": "2026-09-15",
+  "tabs": [
+    {
+      "id": "overview",
+      "label": "Overview",
+      "sections": [
+        {
+          "type": "tiles",
+          "title": "Headline",
+          "items": [
+            { "label": "2026 Revenue YoY", "value": "$1.84M", "delta": "+12.4%", "dir": "up", "hint": "received basis" },
+            { "label": "Adjusted RevPAR YoY", "value": "$212", "delta": "+8.1%", "dir": "up", "hint": "2026 vs 2025" },
+            { "label": "WoW Rent Revenue Pickup", "value": "$41.2K", "delta": "-6% vs 4-wk avg", "dir": "down", "hint": "net new rent booked this week" },
+            { "label": "Next 60 Days Pacing", "value": "62% APO", "delta": "+4 pts vs LY", "dir": "up" }
+          ]
+        },
+        {
+          "type": "chart",
+          "title": "Monthly rent revenue vs last year",
+          "kind": "bar",
+          "xLabels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"],
+          "series": [
+            { "name": "2026", "values": [142000, 151000, 168000, 155000, 189000, 231000, 268000, 254000, 176000] },
+            { "name": "2025", "values": [128000, 139000, 150000, 147000, 172000, 214000, 249000, 238000, 161000] }
+          ],
+          "format": "currency"
+        },
+        {
+          "type": "table",
+          "title": "Top units by revenue · trailing 90 days",
+          "columns": ["Unit", "Revenue", "Occ %", "ADR"],
+          "rows": [
+            ["Ridge Cabin", "$84K", "78%", "$412"],
+            ["Creekside", "$71K", "74%", "$385"],
+            ["Bearpaw Lodge", "$66K", "81%", "$344"],
+            ["Timber Hollow", "$58K", "69%", "$367"]
+          ]
+        },
+        { "type": "note", "text": "Fall foliage weekends are already 70% booked — holding rates firm through Columbus Day." }
+      ]
+    },
+    {
+      "id": "pacing",
+      "label": "Pacing",
+      "sections": [
+        {
+          "type": "tiles",
+          "title": "On the books",
+          "items": [
+            { "label": "Next 30 Days APO", "value": "71%", "delta": "+5 pts vs LY", "dir": "up", "hint": "vs market 64%" },
+            { "label": "Next 60 Days APO", "value": "62%", "delta": "+4 pts vs LY", "dir": "up", "hint": "vs market 57%" },
+            { "label": "Booking Window", "value": "34 days", "delta": "flat vs LY", "dir": "flat" }
+          ]
+        },
+        {
+          "type": "chart",
+          "title": "Next 60 days — occupancy on the books by week",
+          "kind": "line",
+          "xLabels": ["Sep 15", "Sep 22", "Sep 29", "Oct 6", "Oct 13", "Oct 20", "Oct 27", "Nov 3"],
+          "series": [
+            { "name": "This year", "values": [88, 79, 74, 70, 66, 55, 43, 31] },
+            { "name": "Last year", "values": [85, 77, 70, 63, 58, 52, 41, 33] }
+          ],
+          "format": "percent"
+        },
+        { "type": "note", "text": "Late-October softness mirrors the market; no rate action recommended yet." }
+      ]
+    },
+    { "id": "goals", "label": "Goals", "sections": [] }
+  ]
+}
