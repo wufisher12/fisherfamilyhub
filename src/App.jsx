@@ -307,6 +307,8 @@ const CLIENTS = [
   { id: "franmaxon", label: "Fran Maxon Real Estate", abbr: "FMRE" },
   { id: "hodnett", label: "Hodnett Cooper", abbr: "HC" },
   { id: "kauai", label: "Kauai Real Estate Group", abbr: "KREG" },
+  { id: "ohana", label: "Ohana Vacations", abbr: "OV" },
+  { id: "giantsridge", label: "The Villas at Giants Ridge", abbr: "VGR" },
 ];
 const clientOf = (id) => CLIENTS.find((c) => c.id === id);
 
@@ -2066,18 +2068,9 @@ function AccountsTab() {
 /*  Mike Fisher Group portal — separate logins, role-based access      */
 /*  Runs at ?portal=mfg in its own browser tab with its own session.   */
 /* ------------------------------------------------------------------ */
-const MFG_CLIENTS = [
-  { id: "panhandle", label: "Panhandle Getaways", abbr: "PHG" },
-  { id: "bearcamp", label: "Bear Camp Cabin Rentals", abbr: "BCCR" },
-  { id: "killington", label: "The Killington Group", abbr: "TKG" },
-  { id: "haller", label: "Haller Coastal Homes", abbr: "HCH" },
-  { id: "nashville", label: "Nashville Vacation Homes", abbr: "NVH" },
-  { id: "heights", label: "The Heights Hotel", abbr: "THH" },
-  { id: "newwave", label: "New Wave Vacation Rentals", abbr: "NW" },
-  { id: "franmaxon", label: "Fran Maxon Real Estate", abbr: "FMRE" },
-  { id: "hodnett", label: "Hodnett Cooper", abbr: "HC" },
-  { id: "kauai", label: "Kauai Real Estate Group", abbr: "KREG" },
-];
+// The portal shares the master roster (CLIENTS, defined with the To Do List
+// categories above) — adding a client there adds it here.
+const MFG_CLIENTS = CLIENTS;
 const mfgClientOf = (id) => MFG_CLIENTS.find((c) => c.id === id);
 
 const MFG_RED = "#D31017";
