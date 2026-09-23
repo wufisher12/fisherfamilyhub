@@ -2201,7 +2201,14 @@ function niceCeil(v) {
   return (n <= 1 ? 1 : n <= 1.5 ? 1.5 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 3 ? 3 : n <= 4 ? 4 : n <= 5 ? 5 : n <= 8 ? 8 : 10) * m;
 }
 
-function MfgSectionTitle({ children }) {
+function MfgSectionTitle({ children, heading }) {
+  if (heading) {
+    return (
+      <div style={{ fontSize: 20, fontWeight: 800, color: "#1F6FB2", fontFamily: "'Bricolage Grotesque', sans-serif", marginBottom: 12 }}>
+        {children}
+      </div>
+    );
+  }
   return (
     <div style={{ fontSize: 11.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
       {children}
@@ -2212,7 +2219,7 @@ function MfgSectionTitle({ children }) {
 function MfgTilesSection({ section }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
+      {section.title && <MfgSectionTitle heading={section.titleStyle === "heading"}>{section.title}</MfgSectionTitle>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
         {(section.items || []).map((it, i) => (
           <div key={i} style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px" }}>
@@ -2253,7 +2260,7 @@ function MfgChartSection({ section, seriesStyles, compact }) {
   }
 
   const isLine = section.kind === "line";
-  const W = 640, H = compact ? 200 : 240, padL = 48, padR = 10, padT = 10, padB = 26;
+  const W = 640, H = compact ? 250 : 240, padL = 48, padR = 10, padT = 10, padB = 26;
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const scaleSet = visible.length ? visible : series.map((s, i) => ({ s, i }));
   const all = scaleSet.flatMap(({ s }) => s.values).filter((v) => typeof v === "number" && isFinite(v));
@@ -2370,9 +2377,34 @@ function MfgChartSection({ section, seriesStyles, compact }) {
   );
 }
 
+// "$1.2M" -> 1200000, "38.5%" -> 38.5, "+4.7" -> 4.7, "3 BR" -> 3, "-" -> null
+function tableCellNumber(cell) {
+  if (cell === null || cell === undefined) return null;
+  const s = String(cell).trim();
+  const m = s.replace(/[,$%+]/g, "").match(/^(-?\d+(?:\.\d+)?)\s*([KM])?/i);
+  if (!m) return null;
+  const mult = m[2] ? (m[2].toUpperCase() === "M" ? 1e6 : 1e3) : 1;
+  return parseFloat(m[1]) * mult;
+}
+
 function MfgTableSection({ section }) {
   const columns = Array.isArray(section.columns) ? section.columns : [];
-  const rows = Array.isArray(section.rows) ? section.rows : [];
+  // First click sorts high-to-low, second flips, third clears.
+  const [sort, setSort] = useState(null);
+  let rows = Array.isArray(section.rows) ? section.rows : [];
+  if (sort) {
+    const cellAt = (r, i) => (Array.isArray(r) ? r : r?.cells || [])[i];
+    rows = [...rows].sort((ra, rb) => {
+      const na = tableCellNumber(cellAt(ra, sort.col));
+      const nb = tableCellNumber(cellAt(rb, sort.col));
+      if (na === null && nb === null) return String(cellAt(ra, sort.col) ?? "").localeCompare(String(cellAt(rb, sort.col) ?? "")) * sort.dir;
+      if (na === null) return 1;
+      if (nb === null) return -1;
+      return (nb - na) * sort.dir;
+    });
+  }
+  const clickCol = (i) => setSort((s) =>
+    !s || s.col !== i ? { col: i, dir: 1 } : s.dir === 1 ? { col: i, dir: -1 } : null);
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
       {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
@@ -2380,10 +2412,12 @@ function MfgTableSection({ section }) {
         <thead>
           <tr>
             {columns.map((c, i) => (
-              <th key={i} style={{
-                textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 800, color: T.inkSoft,
-                textTransform: "uppercase", letterSpacing: "0.05em", padding: "4px 10px 8px", whiteSpace: "nowrap",
-              }}>{c}</th>
+              <th key={i} onClick={() => clickCol(i)} title="Sort"
+                style={{
+                  textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 800,
+                  color: sort?.col === i ? T.ink : T.inkSoft, cursor: "pointer", userSelect: "none",
+                  textTransform: "uppercase", letterSpacing: "0.05em", padding: "4px 10px 8px", whiteSpace: "nowrap",
+                }}>{c}{sort?.col === i ? (sort.dir === 1 ? " ▼" : " ▲") : ""}</th>
             ))}
           </tr>
         </thead>
@@ -2674,7 +2708,8 @@ function MfgKpiExplorerSection({ section }) {
           );
         })}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: 16 }}>
+      {/* Two charts per row on desktop, one on narrow screens. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 14, marginBottom: 16 }}>
         {(section.kpis || []).filter((k) => k.expr !== "count").map((k) => (
           <MfgChartSection key={k.label} compact section={chartOf(k)} />
         ))}
