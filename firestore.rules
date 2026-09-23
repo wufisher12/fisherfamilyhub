@@ -23,10 +23,12 @@ service cloud.firestore {
     function isTeam() {
       return hasRole() && myRole().role == 'team';
     }
+    // A client may touch their dashboard doc and its companions
+    // (e.g. mfg-client-bearcamp-notes), never another client's.
     function isClientFor(docId) {
       return hasRole()
         && myRole().role == 'client'
-        && docId == 'mfg-client-' + myRole().clientId;
+        && docId.matches('mfg-client-' + myRole().clientId + '(-.*)?');
     }
 
     match /mfgRoles/{email} {

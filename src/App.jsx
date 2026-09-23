@@ -2231,12 +2231,18 @@ function MfgTilesSection({ section }) {
   );
 }
 
-function MfgChartSection({ section }) {
+function MfgChartSection({ section, seriesStyles, compact }) {
   const [hover, setHover] = useState(null);
+  // Click a legend entry to hide/show that series.
+  const [hidden, setHidden] = useState({});
   const xLabels = Array.isArray(section.xLabels) ? section.xLabels : [];
+  const maxSeries = seriesStyles ? seriesStyles.length : MFG_SERIES.length;
   const series = (Array.isArray(section.series) ? section.series : [])
-    .filter((s) => s && Array.isArray(s.values)).slice(0, MFG_SERIES.length);
-  const card = { background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16 };
+    .filter((s) => s && Array.isArray(s.values)).slice(0, maxSeries);
+  const colorOf = (i) => (seriesStyles && seriesStyles[i]?.color) || MFG_SERIES[i % MFG_SERIES.length];
+  const dashOf = (i) => (seriesStyles && seriesStyles[i]?.dash) || null;
+  const visible = series.map((s, i) => ({ s, i })).filter(({ i }) => !hidden[i]);
+  const card = { background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: compact ? 0 : 16 };
   if (!xLabels.length || !series.length) {
     return (
       <div style={card}>
@@ -2247,9 +2253,10 @@ function MfgChartSection({ section }) {
   }
 
   const isLine = section.kind === "line";
-  const W = 640, H = 240, padL = 48, padR = 10, padT = 10, padB = 26;
+  const W = 640, H = compact ? 200 : 240, padL = 48, padR = 10, padT = 10, padB = 26;
   const innerW = W - padL - padR, innerH = H - padT - padB;
-  const all = series.flatMap((s) => s.values).filter((v) => typeof v === "number" && isFinite(v));
+  const scaleSet = visible.length ? visible : series.map((s, i) => ({ s, i }));
+  const all = scaleSet.flatMap(({ s }) => s.values).filter((v) => typeof v === "number" && isFinite(v));
   const rawMin = Math.min(0, ...all); // zero baseline unless data goes negative
   const max = niceCeil(Math.max(1e-9, ...all)) || 1;
   const min = rawMin < 0 ? -niceCeil(-rawMin) : 0;
@@ -2272,12 +2279,20 @@ function MfgChartSection({ section }) {
     <div style={card}>
       {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
       {series.length >= 2 && (
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
           {series.map((s, si) => (
-            <span key={si} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: T.inkSoft }}>
-              <span style={{ width: 10, height: 10, borderRadius: 3, background: MFG_SERIES[si] }} />
+            <button key={si} onClick={() => setHidden((h) => ({ ...h, [si]: !h[si] }))}
+              title={hidden[si] ? "Show series" : "Hide series"}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
+                color: T.inkSoft, border: "none", background: "transparent", cursor: "pointer",
+                padding: "2px 4px", opacity: hidden[si] ? 0.4 : 1,
+                textDecoration: hidden[si] ? "line-through" : "none", fontFamily: "Inter, sans-serif",
+              }}>
+              <svg width="18" height="10"><line x1="0" y1="5" x2="18" y2="5" stroke={colorOf(si)}
+                strokeWidth="3" strokeDasharray={dashOf(si) || "none"} /></svg>
               {s.name || `Series ${si + 1}`}
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -2297,30 +2312,31 @@ function MfgChartSection({ section }) {
             </text>
           ))}
           {!isLine && xLabels.map((_, i) => {
-            const k = series.length;
+            const k = visible.length || 1;
             const areaW = gw * 0.68;
             const bw = Math.max(2, (areaW - 2 * (k - 1)) / k);
             const x0 = padL + gw * i + (gw - areaW) / 2;
-            return series.map((s, si) => {
+            return visible.map(({ s, i: si }, vi) => {
               const v = s.values[i];
               if (typeof v !== "number" || !isFinite(v)) return null;
               return (
-                <path key={`${i}-${si}`} d={barPath(x0 + si * (bw + 2), v, bw)}
-                  fill={MFG_SERIES[si]} opacity={hover === null || hover === i ? 1 : 0.45} />
+                <path key={`${i}-${si}`} d={barPath(x0 + vi * (bw + 2), v, bw)}
+                  fill={colorOf(si)} opacity={hover === null || hover === i ? 1 : 0.45} />
               );
             });
           })}
-          {isLine && series.map((s, si) => {
+          {isLine && visible.map(({ s, i: si }) => {
             const pts = s.values
               .map((v, i) => (typeof v === "number" && isFinite(v) ? `${padL + gw * (i + 0.5)},${y(v)}` : null))
               .filter(Boolean).join(" ");
             return (
               <g key={si}>
-                <polyline points={pts} fill="none" stroke={MFG_SERIES[si]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                <polyline points={pts} fill="none" stroke={colorOf(si)} strokeWidth={2}
+                  strokeDasharray={dashOf(si) || "none"} strokeLinejoin="round" strokeLinecap="round" />
                 {s.values.map((v, i) =>
                   typeof v === "number" && isFinite(v) ? (
-                    <circle key={i} cx={padL + gw * (i + 0.5)} cy={y(v)} r={hover === i ? 4.5 : 3.5}
-                      fill="#fff" stroke={MFG_SERIES[si]} strokeWidth={2} />
+                    <circle key={i} cx={padL + gw * (i + 0.5)} cy={y(v)} r={hover === i ? 4 : 2.8}
+                      fill="#fff" stroke={colorOf(si)} strokeWidth={2} />
                   ) : null,
                 )}
               </g>
@@ -2340,9 +2356,9 @@ function MfgChartSection({ section }) {
             boxShadow: "0 4px 14px rgba(0,49,87,.25)",
           }}>
             <div style={{ fontWeight: 800, marginBottom: 3 }}>{xLabels[hover]}</div>
-            {series.map((s, si) => (
+            {visible.map(({ s, i: si }) => (
               <div key={si} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: MFG_SERIES[si] }} />
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: colorOf(si) }} />
                 <span style={{ color: "#C7D2DC" }}>{s.name || `Series ${si + 1}`}</span>
                 <span style={{ fontWeight: 800, marginLeft: "auto", paddingLeft: 8 }}>{fmtFullValue(s.values[hover], section.format)}</span>
               </div>
@@ -2398,6 +2414,328 @@ function MfgNoteSection({ section }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Interactive client-dashboard sections (contract v2.1)              */
+/* ------------------------------------------------------------------ */
+const MFG_CARD = { background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16 };
+const MFG_CHIP = (on) => ({
+  border: `1.5px solid ${on ? T.ink : T.line}`, background: on ? T.ink : "#fff",
+  color: on ? "#fff" : T.inkSoft, borderRadius: 999, padding: "4px 12px",
+  fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+});
+const MFG_INPUT = {
+  border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "7px 11px",
+  fontSize: 13, outline: "none", background: "#fff", color: T.ink, fontFamily: "Inter, sans-serif",
+};
+
+function fmtKpi(v, format) {
+  if (v === null || v === undefined || !isFinite(v)) return "–";
+  if (format === "percent") return `${(v * 100).toFixed(1)}%`;
+  if (format === "currency") {
+    const a = Math.abs(v);
+    return a >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : a >= 1e4 ? `$${Math.round(v / 1e3)}K` : `$${Math.round(v).toLocaleString()}`;
+  }
+  return Math.round(v).toLocaleString();
+}
+
+function MfgChipRow({ label, options, sel, setSel }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em", marginRight: 2 }}>{label}</span>
+      {options.map((o) => (
+        <button key={o} onClick={() => setSel((s) => ({ ...s, [o]: !s[o] }))} style={MFG_CHIP(!!sel[o])}>{o}</button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------- listing table */
+function MfgListingTableSection({ section, userEmail }) {
+  const rows = Array.isArray(section.rows) ? section.rows : [];
+  const notes = useMfgHubDoc(section.notesDoc);
+  const [q, setQ] = useState("");
+  const [brSel, setBrSel] = useState({});
+  const [tagSel, setTagSel] = useState({});
+  const [city, setCity] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [histFor, setHistFor] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const cities = [...new Set(rows.map((r) => r.city).filter(Boolean))].sort();
+  const allTags = [...new Set(rows.flatMap((r) => r.tags || []))].sort();
+  const brs = Object.keys(section.summary?.byBedrooms || {});
+  const anyBr = Object.values(brSel).some(Boolean);
+  const anyTag = Object.values(tagSel).some(Boolean);
+
+  const shown = rows.filter((r) =>
+    (!q || (r.name || "").toLowerCase().includes(q.toLowerCase()))
+    && (!anyBr || brSel[String(r.bedrooms)])
+    && (!anyTag || (r.tags || []).some((t) => tagSel[t]))
+    && (!city || r.city === city));
+
+  const saveNote = async (id) => {
+    if (!userEmail) return;
+    setSaving(true);
+    try {
+      const prev = notes?.[id];
+      const entry = {
+        text: draft.trim(), by: userEmail, at: Date.now(),
+        history: prev && prev.text
+          ? [{ text: prev.text, by: prev.by || "", at: prev.at || 0 }, ...(prev.history || [])].slice(0, 20)
+          : (prev?.history || []),
+      };
+      await setDoc(doc(mfgDb, "hub", section.notesDoc), { [id]: entry }, { merge: true });
+      setEditing(null);
+    } catch (e) {
+      alert(`Could not save the note (${e.code || e.message}).`);
+    }
+    setSaving(false);
+  };
+
+  const th = { textAlign: "left", fontSize: 10.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em", padding: "4px 10px 8px", whiteSpace: "nowrap" };
+  const td = { fontSize: 13, color: T.ink, padding: "8px 10px", borderTop: `1px solid ${T.line}`, verticalAlign: "top" };
+  const a = { color: "#1F6FB2", fontWeight: 700, textDecoration: "none" };
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 14 }}>
+        <div style={{ ...MFG_CARD, marginBottom: 0, padding: "12px 16px" }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase" }}>Active listings</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{section.summary?.total ?? rows.length}</div>
+        </div>
+        {Object.entries(section.summary?.byBedrooms || {}).map(([br, n]) => (
+          <div key={br} style={{ ...MFG_CARD, marginBottom: 0, padding: "12px 16px" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase" }}>{br} BR</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{n}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...MFG_CARD, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search listings…" style={{ ...MFG_INPUT, minWidth: 200 }} />
+          <select value={city} onChange={(e) => setCity(e.target.value)} style={MFG_INPUT}>
+            <option value="">All cities</option>
+            {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <MfgChipRow label="Bedrooms" options={brs} sel={brSel} setSel={setBrSel} />
+        <MfgChipRow label="Tags" options={allTags} sel={tagSel} setSel={setTagSel} />
+      </div>
+
+      <div style={{ ...MFG_CARD, overflowX: "auto" }}>
+        <div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700, marginBottom: 6 }}>{shown.length} of {rows.length} listings</div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <th style={th}>Listing</th><th style={th}>City</th><th style={th}>BR</th>
+            <th style={th}>Abs. Min</th><th style={th}>Tags</th><th style={{ ...th, minWidth: 220 }}>Notes</th>
+          </tr></thead>
+          <tbody>
+            {shown.map((r) => {
+              const note = notes && notes[r.id];
+              return (
+                <React.Fragment key={r.id}>
+                  <tr>
+                    <td style={{ ...td, fontWeight: 700 }}>
+                      {r.url ? <a href={r.url} target="_blank" rel="noreferrer" style={a}>{r.name}</a> : r.name}
+                    </td>
+                    <td style={td}>{r.mapsUrl ? <a href={r.mapsUrl} target="_blank" rel="noreferrer" style={a}>{r.city}</a> : r.city}</td>
+                    <td style={td}>{r.bedrooms}</td>
+                    <td style={td}>{r.absMin != null
+                      ? <a href={r.whUrl} target="_blank" rel="noreferrer" style={a} title="Open in Wheelhouse">${r.absMin}</a>
+                      : "–"}</td>
+                    <td style={td}>{(r.tags || []).map((t) => (
+                      <span key={t} style={{ display: "inline-block", fontSize: 10.5, fontWeight: 800, color: T.ink, background: T.skySoft, borderRadius: 999, padding: "2px 8px", margin: "0 4px 3px 0" }}>{t}</span>
+                    ))}</td>
+                    <td style={td}>
+                      {editing === r.id ? (
+                        <div>
+                          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3}
+                            style={{ ...MFG_INPUT, width: "100%", boxSizing: "border-box", resize: "vertical" }} autoFocus />
+                          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                            <button disabled={saving} onClick={() => saveNote(r.id)} style={{ ...MFG_CHIP(true), opacity: saving ? 0.6 : 1 }}>{saving ? "Saving…" : "Save"}</button>
+                            <button onClick={() => setEditing(null)} style={MFG_CHIP(false)}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                          <div style={{ flex: 1, fontSize: 12.5, color: note?.text ? T.ink : "#A9B2BB", lineHeight: 1.45 }}>
+                            {note?.text || "No note yet"}
+                            {note?.text && (
+                              <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>
+                                {note.by} · {note.at ? new Date(note.at).toLocaleDateString() : ""}
+                                {(note.history || []).length > 0 && (
+                                  <button onClick={() => setHistFor(histFor === r.id ? null : r.id)}
+                                    style={{ border: "none", background: "transparent", color: "#1F6FB2", cursor: "pointer", fontSize: 10.5, fontWeight: 700, padding: 0, marginLeft: 6 }}>
+                                    history ({note.history.length})
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {userEmail && (
+                            <button onClick={() => { setEditing(r.id); setDraft(note?.text || ""); setHistFor(null); }}
+                              title="Edit note" style={{ border: "none", background: "transparent", color: T.inkSoft, cursor: "pointer", fontSize: 13 }}>✎</button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                  {histFor === r.id && (note?.history || []).length > 0 && (
+                    <tr><td colSpan={6} style={{ ...td, background: "#FAFBFC" }}>
+                      {(note.history || []).map((h, i) => (
+                        <div key={i} style={{ fontSize: 12, color: T.inkSoft, padding: "3px 0", borderBottom: i < note.history.length - 1 ? `1px dashed ${T.line}` : "none" }}>
+                          <span style={{ color: T.ink }}>{h.text}</span>
+                          <span style={{ marginLeft: 8, fontSize: 10.5 }}>— {h.by} · {h.at ? new Date(h.at).toLocaleDateString() : ""}</span>
+                        </div>
+                      ))}
+                    </td></tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {section.note && <MfgNoteSection section={{ text: section.note }} />}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------- KPI explorer */
+function evalKpi(expr, c, idx) {
+  const tot = (arr) => (arr || []).reduce((a, b) => a + (b || 0), 0);
+  const val = (name, i) => (i == null ? tot(c[name]) : (c[name]?.[i] ?? 0));
+  if (expr === "count") return c.listings;
+  const [op, rest] = String(expr).split(":");
+  if (op === "sum") return val(rest, idx);
+  if (op === "ratio") {
+    const [num, den] = rest.split("/");
+    const d = val(den, idx);
+    return d ? val(num, idx) / d : null;
+  }
+  return null;
+}
+
+function MfgKpiExplorerSection({ section }) {
+  const [brSel, setBrSel] = useState({});
+  const [tagSel, setTagSel] = useState({});
+  const groups = Array.isArray(section.groups) ? section.groups : [];
+  const anyBr = Object.values(brSel).some(Boolean);
+  const anyTag = Object.values(tagSel).some(Boolean);
+  const active = groups.filter((g) =>
+    (!anyBr || brSel[g.bedrooms]) && (!anyTag || (g.tags || []).some((t) => tagSel[t])));
+
+  const periods = section.periods || [];
+  const combine = (side) => {
+    const c = { rent: periods.map(() => 0), booked: periods.map(() => 0), avail: periods.map(() => 0), listings: 0 };
+    for (const g of active) {
+      c.listings += g.listings || 0;
+      for (const k of ["rent", "booked", "avail"]) {
+        (g[side]?.[k] || []).forEach((v, i) => { c[k][i] += v || 0; });
+      }
+    }
+    return c;
+  };
+  const cur = combine("cur"), ly = combine("ly");
+
+  const chartOf = (kpi) => ({
+    type: "chart", kind: "line", title: kpi.label, format: kpi.format,
+    xLabels: periods,
+    series: [
+      { name: "This year", values: periods.map((_, i) => scale(evalKpi(kpi.expr, cur, i), kpi.format)) },
+      { name: `LY as of ${section.lyAsOf}`, values: periods.map((_, i) => scale(evalKpi(kpi.expr, ly, i), kpi.format)) },
+    ],
+  });
+  const scale = (v, format) => (v == null ? null : format === "percent" ? Math.round(v * 1000) / 10 : Math.round(v * 100) / 100);
+
+  return (
+    <div>
+      <div style={{ ...MFG_CARD, display: "flex", flexDirection: "column", gap: 10 }}>
+        <MfgChipRow label="Bedrooms" options={section.filters?.bedrooms || []} sel={brSel} setSel={setBrSel} />
+        <MfgChipRow label="Tags" options={section.filters?.tags || []} sel={tagSel} setSel={setTagSel} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 16 }}>
+        {(section.kpis || []).map((k) => {
+          const c = evalKpi(k.expr, cur, null), l = evalKpi(k.expr, ly, null);
+          const d = c != null && l ? ((c - l) / l) * 100 : null;
+          return (
+            <div key={k.label} style={{ ...MFG_CARD, marginBottom: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.06em" }}>{k.label}</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif", margin: "5px 0 2px" }}>{fmtKpi(c, k.format)}</div>
+              <div style={{ fontSize: 11.5, color: T.inkSoft }}>
+                LY {fmtKpi(l, k.format)}
+                {d != null && Math.abs(d) >= 0.05 && (
+                  <span style={{ fontWeight: 800, marginLeft: 6, color: d > 0 ? T.leaf : T.coral }}>{`${d > 0 ? "+" : ""}${d.toFixed(1)}%`}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: 16 }}>
+        {(section.kpis || []).filter((k) => k.expr !== "count").map((k) => (
+          <MfgChartSection key={k.label} compact section={chartOf(k)} />
+        ))}
+      </div>
+      {section.note && <MfgNoteSection section={{ text: section.note }} />}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------- benchmark */
+function MfgBenchmarkSection({ section }) {
+  const variants = Array.isArray(section.variants) ? section.variants : [];
+  const [vid, setVid] = useState(variants[0]?.id);
+  const v = variants.find((x) => x.id === vid) || variants[0];
+  if (!v) return null;
+  // Color carries the entity; dash carries the vintage. Six lines stay legible.
+  const styles = v.series.map((s) => ({
+    color: s.entity === "market" ? "#A87415" : "#1F6FB2",
+    dash: s.vintage === "ly" ? "2,4" : s.vintage === "prior" ? "8,4" : null,
+  }));
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <select value={vid} onChange={(e) => setVid(e.target.value)} style={MFG_INPUT}>
+          {variants.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+        </select>
+      </div>
+      <MfgChartSection seriesStyles={styles} section={{
+        type: "chart", kind: "line", title: section.title, format: section.format,
+        xLabels: v.xLabels, series: v.series,
+      }} />
+      {section.note && <div style={{ fontSize: 11.5, color: T.inkSoft, margin: "-8px 0 16px 4px" }}>{section.note}</div>}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------- comp sets */
+function MfgCompsetSection({ section }) {
+  return (
+    <div style={MFG_CARD}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{section.name}</div>
+        {section.whUrl && (
+          <a href={section.whUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 800, color: "#1F6FB2", textDecoration: "none" }}>Open in Wheelhouse →</a>
+        )}
+      </div>
+      {section.criteria && <div style={{ fontSize: 13, color: T.inkSoft, margin: "6px 0 14px", lineHeight: 1.5 }}>{section.criteria}</div>}
+      <MfgSectionTitle>Comps on the OTA</MfgSectionTitle>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginBottom: 16 }}>
+        {(section.links || []).map((l, i) => l.url ? (
+          <a key={i} href={l.url} target="_blank" rel="noreferrer" style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, color: "#1F6FB2", textDecoration: "none" }}>{l.label}</a>
+        ) : (
+          <div key={i} style={{ border: `1px dashed ${T.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 12.5, color: "#A9B2BB" }}>{l.label}</div>
+        ))}
+      </div>
+      {section.stats && <MfgTableSection section={{ title: "Wheelhouse data", columns: section.stats.columns, rows: section.stats.rows }} />}
+      {section.note && <MfgNoteSection section={{ text: section.note }} />}
+    </div>
+  );
+}
+
 function MfgComingSoon({ text }) {
   return (
     <div style={{
@@ -2408,16 +2746,20 @@ function MfgComingSoon({ text }) {
 }
 
 // Unknown section types are ignored per the contract.
-function MfgSection({ section }) {
+function MfgSection({ section, userEmail }) {
   if (!section || typeof section !== "object") return null;
   if (section.type === "tiles") return <MfgTilesSection section={section} />;
   if (section.type === "chart") return <MfgChartSection section={section} />;
   if (section.type === "table") return <MfgTableSection section={section} />;
   if (section.type === "note") return <MfgNoteSection section={section} />;
+  if (section.type === "listingTable") return <MfgListingTableSection section={section} userEmail={userEmail} />;
+  if (section.type === "kpiExplorer") return <MfgKpiExplorerSection section={section} />;
+  if (section.type === "benchmark") return <MfgBenchmarkSection section={section} />;
+  if (section.type === "compset") return <MfgCompsetSection section={section} />;
   return null;
 }
 
-function MfgClientScreen({ client, isTeam, onSignOut }) {
+function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
   // ?sample=1 previews the bundled sample document without live data.
   const sample = new URLSearchParams(window.location.search).has("sample");
   const liveDoc = useMfgHubDoc(sample ? null : `mfg-client-${client.id}`);
@@ -2483,7 +2825,7 @@ function MfgClientScreen({ client, isTeam, onSignOut }) {
               )}
             </div>
             {activeTab && activeTab.sections?.length > 0
-              ? activeTab.sections.map((s, i) => <MfgSection key={i} section={s} />)
+              ? activeTab.sections.map((s, i) => <MfgSection key={`${activeTab.id}-${i}`} section={s} userEmail={userEmail} />)
               : <MfgComingSoon />}
           </>
         )}
@@ -2544,13 +2886,13 @@ function MFGPortal({ clientParam }) {
   if (roleInfo.role === "client") {
     const c = mfgClientOf(roleInfo.clientId);
     if (!c) return <div style={{ padding: 40, fontFamily: "Inter, sans-serif" }}>Client record missing — contact Mike.</div>;
-    return <MfgClientScreen client={c} isTeam={false} onSignOut={signOutMfg} />;
+    return <MfgClientScreen client={c} isTeam={false} onSignOut={signOutMfg} userEmail={user.email} />;
   }
 
   // Team: full portal
   if (clientParam) {
     const c = mfgClientOf(clientParam);
-    if (c) return <MfgClientScreen client={c} isTeam onSignOut={signOutMfg} />;
+    if (c) return <MfgClientScreen client={c} isTeam onSignOut={signOutMfg} userEmail={user.email} />;
   }
 
   const tabs = [

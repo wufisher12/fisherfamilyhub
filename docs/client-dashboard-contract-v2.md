@@ -61,7 +61,27 @@ every client can differ. Look, colors, and typography are owned by the hub.
 ```
 
 ## Rules
-- Section `type` is one of: `tiles`, `chart`, `table`, `note`. Anything else is ignored.
+- Section `type` is one of: `tiles`, `chart`, `table`, `note`, plus the v2.1
+  interactive types below. Anything else is ignored.
+- **v2.1 interactive sections** (2026-09-23, Bear Camp first):
+  - `listingTable` — `{summary:{total,byBedrooms}, rows:[{id,name,url,city,
+    mapsUrl,bedrooms,absMin,whUrl,tags[]}], notesDoc, note}`. The hub renders
+    summary blocks, search + bedroom/tag/city filters, link cells, and an
+    editable Notes column stored in the separate Firestore doc `hub/{notesDoc}`
+    (`{[listingId]: {text,by,at,history[]}}`) so nightly writer runs never
+    touch notes. `notesDoc` must start with `mfg-client-{clientId}-`.
+  - `kpiExplorer` — additive components per `{bedrooms,tags}` group per period
+    (`cur`/`ly` with `rent`,`booked`,`avail` arrays and `listings`); `kpis`
+    declare `expr` of only `sum:<c>`, `ratio:<a>/<b>`, or `count`; `format`
+    `currency|percent|number`; `granularity` `month|week`. The hub aggregates
+    the current filter selection and evaluates the exprs — no other math.
+  - `benchmark` — `{variants:[{id,label,xLabels,series:[{name,entity:
+    portfolio|market, vintage: today|prior|ly, values[]}]}], format, note}`.
+    Hub styles color-by-entity / dash-by-vintage, variant dropdown, and a
+    clickable legend to hide/show series (all charts have this).
+  - `compset` — `{name, whUrl, criteria, links:[{label,url|null}],
+    stats:{columns,rows}, note}` — draft comp-set layout.
+- Interactive-section documents may reach ~500KB (Firestore caps at 1MB).
 - Table rows are maps, `{"cells": [...]}` — **Firestore rejects arrays nested
   directly inside arrays**, so `[[...], [...]]` can never be stored (amended
   2026-09-15; the hub renderer accepts both shapes for JSON-side previews).
