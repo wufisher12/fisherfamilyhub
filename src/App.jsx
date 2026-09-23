@@ -2380,7 +2380,8 @@ function MfgChartSection({ section, seriesStyles, compact }) {
 // "$1.2M" -> 1200000, "38.5%" -> 38.5, "+4.7" -> 4.7, "3 BR" -> 3, "-" -> null
 function tableCellNumber(cell) {
   if (cell === null || cell === undefined) return null;
-  const s = String(cell).trim();
+  if (typeof cell === "object") cell = cell.text;
+  const s = String(cell ?? "").trim();
   const m = s.replace(/[,$%+]/g, "").match(/^(-?\d+(?:\.\d+)?)\s*([KM])?/i);
   if (!m) return null;
   const mult = m[2] ? (m[2].toUpperCase() === "M" ? 1e6 : 1e3) : 1;
@@ -2429,8 +2430,13 @@ function MfgTableSection({ section }) {
               {(Array.isArray(r) ? r : Array.isArray(r?.cells) ? r.cells : []).map((cell, ci) => (
                 <td key={ci} style={{
                   textAlign: ci === 0 ? "left" : "right", fontSize: 13.5, color: T.ink,
-                  fontWeight: ci === 0 ? 700 : 500, padding: "9px 10px", borderTop: `1px solid ${T.line}`, whiteSpace: "nowrap",
-                }}>{cell}</td>
+                  fontWeight: ci === 0 ? 700 : 500, padding: "9px 10px", borderTop: `1px solid ${T.line}`,
+                  whiteSpace: ci === 0 ? "normal" : "nowrap",
+                }}>{cell && typeof cell === "object"
+                  ? (cell.url
+                    ? <a href={cell.url} target="_blank" rel="noreferrer" style={{ color: "#1F6FB2", fontWeight: 700, textDecoration: "none" }}>{cell.text}</a>
+                    : cell.text)
+                  : cell}</td>
               ))}
             </tr>
           ))}
@@ -2746,6 +2752,70 @@ function MfgBenchmarkSection({ section }) {
   );
 }
 
+/* ---------------------------------------------------- comp set list */
+function MfgCompsetListSection({ section }) {
+  const [openId, setOpenId] = useState(null);
+  const sets = Array.isArray(section.sets) ? section.sets : [];
+  const open = sets.find((s) => s.id === openId);
+
+  if (open) {
+    return (
+      <div>
+        <button onClick={() => setOpenId(null)} style={{
+          border: "none", background: "transparent", color: "#1F6FB2", cursor: "pointer",
+          fontSize: 13, fontWeight: 800, padding: 0, marginBottom: 10, fontFamily: "Inter, sans-serif",
+        }}>← All comp sets</button>
+        <div style={MFG_CARD}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <MfgSectionTitle heading>{open.name}</MfgSectionTitle>
+            <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>
+              {open.kind} · {open.kpis?.comps} comps · updated {open.updated}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 10 }}>{open.criteria}</div>
+          {(open.associated || []).length > 0 && (
+            <div style={{ fontSize: 12.5, marginBottom: 4 }}>
+              <span style={{ fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", fontSize: 10.5, letterSpacing: "0.05em", marginRight: 8 }}>Compared against</span>
+              {open.associated.map((a, i) => a.whUrl
+                ? <a key={i} href={a.whUrl} target="_blank" rel="noreferrer" style={{ color: "#1F6FB2", fontWeight: 700, textDecoration: "none", marginRight: 10 }}>{a.name}</a>
+                : <span key={i} style={{ fontWeight: 700, marginRight: 10 }}>{a.name}</span>)}
+            </div>
+          )}
+        </div>
+        <MfgTableSection section={{ title: "Comps (click a name to open the OTA listing)", columns: open.columns, rows: open.rows }} />
+        {section.note && <MfgNoteSection section={{ text: section.note }} />}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {sets.map((s) => (
+        <button key={s.id} onClick={() => setOpenId(s.id)} style={{
+          ...MFG_CARD, width: "100%", textAlign: "left", cursor: "pointer", marginBottom: 10,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+          fontFamily: "Inter, sans-serif", padding: "14px 18px",
+        }}>
+          <div>
+            <div style={{ fontSize: 15.5, fontWeight: 800, color: T.ink }}>{s.name}</div>
+            <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}>{s.criteria}{s.updated ? ` · updated ${s.updated}` : ""}</div>
+          </div>
+          <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
+            {[["Comps", s.kpis?.comps], ["Med. APO 365", s.kpis?.medOcc], ["Med. ADR 365", s.kpis?.medAdr]].map(([l, v]) => (
+              <div key={l} style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 9.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em" }}>{l}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{v}</div>
+              </div>
+            ))}
+            <span style={{ color: "#1F6FB2", fontWeight: 800, fontSize: 16 }}>→</span>
+          </div>
+        </button>
+      ))}
+      {section.note && <MfgNoteSection section={{ text: section.note }} />}
+    </div>
+  );
+}
+
 /* ---------------------------------------------------- comp sets */
 function MfgCompsetSection({ section }) {
   return (
@@ -2791,6 +2861,7 @@ function MfgSection({ section, userEmail }) {
   if (section.type === "kpiExplorer") return <MfgKpiExplorerSection section={section} />;
   if (section.type === "benchmark") return <MfgBenchmarkSection section={section} />;
   if (section.type === "compset") return <MfgCompsetSection section={section} />;
+  if (section.type === "compsetList") return <MfgCompsetListSection section={section} />;
   return null;
 }
 

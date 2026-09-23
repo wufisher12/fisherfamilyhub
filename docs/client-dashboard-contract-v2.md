@@ -81,6 +81,11 @@ every client can differ. Look, colors, and typography are owned by the hub.
     clickable legend to hide/show series (all charts have this).
   - `compset` — `{name, whUrl, criteria, links:[{label,url|null}],
     stats:{columns,rows}, note}` — draft comp-set layout.
+  - `compsetList` — `{sets:[{id,name,kind,paid,updated,criteria,counts,
+    kpis:{comps,medOcc,medAdr}, associated:[{name,whUrl}], columns, rows}],
+    note}`. Hub renders a block per set (name + high-level KPIs) that expands
+    into the sortable member table. Table cells anywhere may be
+    `{"text","url"}` to render as a link.
 - Interactive-section documents may reach ~500KB (Firestore caps at 1MB).
 - Table rows are maps, `{"cells": [...]}` — **Firestore rejects arrays nested
   directly inside arrays**, so `[[...], [...]]` can never be stored (amended
