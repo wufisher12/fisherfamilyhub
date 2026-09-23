@@ -2786,9 +2786,9 @@ function MfgCompsetListSection({ section }) {
             </div>
           )}
         </div>
-        {open.chart && (
-          <MfgChartSection section={{ type: "chart", kind: "line", title: open.chart.title, xLabels: open.chart.xLabels, series: open.chart.series, format: open.chart.format || "currency" }} />
-        )}
+        {[open.chart, open.chartMonthly].filter(Boolean).map((ch, i) => (
+          <MfgChartSection key={i} section={{ type: "chart", kind: "line", title: ch.title, xLabels: ch.xLabels, series: ch.series, format: ch.format || "currency" }} />
+        ))}
         <MfgTableSection section={{ title: "Comps (click a name to open the OTA listing)", columns: open.columns, rows: open.rows }} />
         {section.note && <MfgNoteSection section={{ text: section.note }} />}
       </div>
