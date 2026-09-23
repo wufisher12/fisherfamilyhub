@@ -2767,9 +2767,13 @@ function MfgCompsetListSection({ section }) {
         }}>← All comp sets</button>
         <div style={MFG_CARD}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <MfgSectionTitle heading>{open.name}</MfgSectionTitle>
+            <MfgSectionTitle heading>
+              {open.setUrl
+                ? <a href={open.setUrl} target="_blank" rel="noreferrer" title="Open this comp set in Wheelhouse" style={{ color: "#1F6FB2", textDecoration: "none" }}>{open.name} ↗</a>
+                : open.name}
+            </MfgSectionTitle>
             <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>
-              {open.kind} · {open.kpis?.comps} comps · updated {open.updated}
+              {open.kind} · updated {open.updated}
             </span>
           </div>
           <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 10 }}>{open.criteria}</div>
@@ -2782,6 +2786,9 @@ function MfgCompsetListSection({ section }) {
             </div>
           )}
         </div>
+        {open.chart && (
+          <MfgChartSection section={{ type: "chart", kind: "line", title: open.chart.title, xLabels: open.chart.xLabels, series: open.chart.series, format: open.chart.format || "currency" }} />
+        )}
         <MfgTableSection section={{ title: "Comps (click a name to open the OTA listing)", columns: open.columns, rows: open.rows }} />
         {section.note && <MfgNoteSection section={{ text: section.note }} />}
       </div>
@@ -2801,10 +2808,10 @@ function MfgCompsetListSection({ section }) {
             <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}>{s.criteria}{s.updated ? ` · updated ${s.updated}` : ""}</div>
           </div>
           <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
-            {[["Comps", s.kpis?.comps], ["Med. APO 365", s.kpis?.medOcc], ["Med. ADR 365", s.kpis?.medAdr]].map(([l, v]) => (
-              <div key={l} style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 9.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em" }}>{l}</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{v}</div>
+            {(Array.isArray(s.kpis) ? s.kpis : []).map((k) => (
+              <div key={k.label} style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 9.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em" }}>{k.label}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{k.value}</div>
               </div>
             ))}
             <span style={{ color: "#1F6FB2", fontWeight: 800, fontSize: 16 }}>→</span>
