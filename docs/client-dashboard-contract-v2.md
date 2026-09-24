@@ -82,10 +82,17 @@ every client can differ. Look, colors, and typography are owned by the hub.
   - `compset` — `{name, whUrl, criteria, links:[{label,url|null}],
     stats:{columns,rows}, note}` — draft comp-set layout.
   - `compsetList` — `{sets:[{id,name,kind,paid,updated,criteria,counts,
-    kpis:{comps,medOcc,medAdr}, associated:[{name,whUrl}], columns, rows}],
-    note}`. Hub renders a block per set (name + high-level KPIs) that expands
-    into the sortable member table. Table cells anywhere may be
-    `{"text","url"}` to render as a link.
+    kpis:[{label,value}], associated:[{name,whUrl}], chart, chartMonthly,
+    columns, rows}], note}`. Hub renders a block per set (name + KPI pairs)
+    that expands into rate charts and the sortable member table. Table cells
+    anywhere may be `{"text","url"}` to render as a link.
+  - `reservations` — `{count, asOf, listings:{idx:{n,br,jk}}, shards:[docIds],
+    preview:[{c:[...]}], note}`. Full rows live in companion shard docs
+    (`{clientDoc}-res-{period}`, columnar parallel arrays `li,cr,ci,ni,rr,
+    la,lc,ln,lb` — a single doc cannot hold tens of thousands of rows under
+    Firestore's 1MB cap, and arrays cannot nest). The hub paints the inline
+    preview immediately, fetches shards on tab open, and provides search,
+    date-range/bedroom/JK filters, sorting, paging, and the LY-ADR hover.
 - Interactive-section documents may reach ~500KB (Firestore caps at 1MB).
 - Table rows are maps, `{"cells": [...]}` — **Firestore rejects arrays nested
   directly inside arrays**, so `[[...], [...]]` can never be stored (amended
