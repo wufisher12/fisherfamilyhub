@@ -2822,6 +2822,8 @@ function MfgReservationsSection({ section }) {
       mo: Number(ci.slice(5, 7)), yr: Number(ci.slice(0, 4)),
       adr: ni ? Math.round((c[4] || 0) / ni) : null, rr: c[4] || 0,
       la: c[5], lc: c[6], ln: c[7], lb: c[8],
+      // Displayed value: % change from LY ADR to this year's.
+      lp: c[5] && ni ? Math.round((((c[4] || 0) / ni) - c[5]) / c[5] * 100) : null,
     };
   }), [raw, section.listings]);
 
@@ -2856,7 +2858,7 @@ function MfgReservationsSection({ section }) {
   const COLS = [
     ["name", "Listing"], ["br", "BR"], ["cr", "Created"], ["ci", "Check In"],
     ["co", "Check Out"], ["ni", "Nights"], ["bw", "BW"], ["mo", "CI Month"],
-    ["yr", "CI Year"], ["adr", "ADR"], ["rr", "Total Rent"], ["la", "LY ADR"],
+    ["yr", "CI Year"], ["adr", "ADR"], ["rr", "Total Rent"], ["lp", "LY ADR"],
   ];
   const clickCol = (c) => setSort((s) => s.col === c ? { col: c, dir: -s.dir } : { col: c, dir: -1 });
   const th = (c, label, first) => (
@@ -2921,9 +2923,9 @@ function MfgReservationsSection({ section }) {
                 <td style={{ ...td(), position: "relative" }}
                   onMouseEnter={() => r.la != null && setTipFor(i)}
                   onMouseLeave={() => setTipFor(null)}>
-                  {r.la != null ? (
-                    <span style={{ color: r.adr != null && r.adr >= r.la ? T.leaf : T.coral, fontWeight: 700, cursor: "default", borderBottom: `1px dotted ${T.inkSoft}` }}>
-                      {money(r.la)}
+                  {r.lp != null ? (
+                    <span style={{ color: r.lp > 0 ? T.leaf : r.lp < 0 ? T.coral : T.inkSoft, fontWeight: 700, cursor: "default", borderBottom: `1px dotted ${T.inkSoft}` }}>
+                      {r.lp}%
                     </span>
                   ) : "–"}
                   {tipFor === i && (
