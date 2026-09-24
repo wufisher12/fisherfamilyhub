@@ -2849,7 +2849,9 @@ function MfgReservationsSection({ section }) {
   }, [rows, q, brSel, anyBr, jkOnly, crFrom, crTo, ciFrom, ciTo, sort, filtersActive, windowFloor]);
 
   useEffect(() => { setFilterCap(200); }, [q, brSel, jkOnly, crFrom, crTo, ciFrom, ciTo]);
-  const visible = filtersActive ? filtered.slice(0, filterCap) : filtered;
+  // Both modes render at most filterCap rows; "show more" reveals 200 at a
+  // time, and the day window only extends once its rows are fully revealed.
+  const visible = filtered.slice(0, filterCap);
 
   const COLS = [
     ["name", "Listing"], ["br", "BR"], ["cr", "Created"], ["ci", "Check In"],
@@ -2893,9 +2895,10 @@ function MfgReservationsSection({ section }) {
 
       <div style={{ ...MFG_CARD, overflowX: "auto" }}>
         <div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700, marginBottom: 6 }}>
+          {`showing ${visible.length.toLocaleString()} of ${filtered.length.toLocaleString()} `}
           {!filtersActive
-            ? `${filtered.length.toLocaleString()} bookings created in the last ${windowDays} days`
-            : `showing ${visible.length.toLocaleString()} of ${filtered.length.toLocaleString()} matching reservations`}
+            ? `bookings created in the last ${windowDays} days`
+            : "matching reservations"}
           {wantFull && shardRows === null && " · loading history…"}
           {wantFull && shardRows === "error" && " · full history unavailable, recent bookings only"}
         </div>
@@ -2940,14 +2943,13 @@ function MfgReservationsSection({ section }) {
           </tbody>
         </table>
         <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
-          {!filtersActive && !(Array.isArray(shardRows) && filtered.length === rows.length) && (
-            <button onClick={() => setWindowDays(windowDays + 5)} style={MFG_CHIP(true)}>
-              Show 5 more days
-            </button>
-          )}
-          {filtersActive && filtered.length > visible.length && (
+          {filtered.length > visible.length ? (
             <button onClick={() => setFilterCap(filterCap + 200)} style={MFG_CHIP(true)}>
               Show 200 more ({(filtered.length - visible.length).toLocaleString()} remaining)
+            </button>
+          ) : !filtersActive && !(Array.isArray(shardRows) && filtered.length === rows.length) && (
+            <button onClick={() => setWindowDays(windowDays + 5)} style={MFG_CHIP(true)}>
+              Show 5 more days
             </button>
           )}
         </div>
