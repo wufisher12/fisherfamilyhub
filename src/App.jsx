@@ -2764,7 +2764,7 @@ function resDaysBetween(a, b) {
   return Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 }
 
-function MfgReservationsSection({ section }) {
+function MfgReservationsSection({ section, isTeam }) {
   // Full history loads from the shard docs; the inline preview (newest 200)
   // paints immediately and stays if the shards can't be read.
   const [shardRows, setShardRows] = useState(null); // null = loading, "error", or array
@@ -2855,10 +2855,12 @@ function MfgReservationsSection({ section }) {
   // time, and the day window only extends once its rows are fully revealed.
   const visible = filtered.slice(0, filterCap);
 
+  // LY ADR is team-only (Mike, 2026-09-24) - client logins don't see it.
   const COLS = [
     ["name", "Listing"], ["br", "BR"], ["cr", "Created"], ["ci", "Check In"],
     ["co", "Check Out"], ["ni", "Nights"], ["bw", "BW"], ["mo", "CI Month"],
-    ["yr", "CI Year"], ["adr", "ADR"], ["rr", "Total Rent"], ["lp", "LY ADR"],
+    ["yr", "CI Year"], ["adr", "ADR"], ["rr", "Total Rent"],
+    ...(isTeam ? [["lp", "LY ADR"]] : []),
   ];
   const clickCol = (c) => setSort((s) => s.col === c ? { col: c, dir: -s.dir } : { col: c, dir: -1 });
   const th = (c, label, first) => (
@@ -2920,7 +2922,7 @@ function MfgReservationsSection({ section }) {
                 <td style={td()}>{r.yr}</td>
                 <td style={td()}>{money(r.adr)}</td>
                 <td style={td()}>{money(r.rr)}</td>
-                <td style={{ ...td(), position: "relative" }}
+                {isTeam && <td style={{ ...td(), position: "relative" }}
                   onMouseEnter={() => r.la != null && setTipFor(i)}
                   onMouseLeave={() => setTipFor(null)}>
                   {r.lp != null ? (
@@ -2939,7 +2941,7 @@ function MfgReservationsSection({ section }) {
                       <div>Check in {r.lc}{r.lb != null ? ` · BW ${r.lb}d` : ""}</div>
                     </div>
                   )}
-                </td>
+                </td>}
               </tr>
             ))}
           </tbody>
@@ -3067,7 +3069,7 @@ function MfgComingSoon({ text }) {
 }
 
 // Unknown section types are ignored per the contract.
-function MfgSection({ section, userEmail }) {
+function MfgSection({ section, userEmail, isTeam }) {
   if (!section || typeof section !== "object") return null;
   if (section.type === "tiles") return <MfgTilesSection section={section} />;
   if (section.type === "chart") return <MfgChartSection section={section} />;
@@ -3078,7 +3080,7 @@ function MfgSection({ section, userEmail }) {
   if (section.type === "benchmark") return <MfgBenchmarkSection section={section} />;
   if (section.type === "compset") return <MfgCompsetSection section={section} />;
   if (section.type === "compsetList") return <MfgCompsetListSection section={section} />;
-  if (section.type === "reservations") return <MfgReservationsSection section={section} />;
+  if (section.type === "reservations") return <MfgReservationsSection section={section} isTeam={isTeam} />;
   return null;
 }
 
@@ -3148,7 +3150,7 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
               )}
             </div>
             {activeTab && activeTab.sections?.length > 0
-              ? activeTab.sections.map((s, i) => <MfgSection key={`${activeTab.id}-${i}`} section={s} userEmail={userEmail} />)
+              ? activeTab.sections.map((s, i) => <MfgSection key={`${activeTab.id}-${i}`} section={s} userEmail={userEmail} isTeam={isTeam} />)
               : <MfgComingSoon />}
           </>
         )}
