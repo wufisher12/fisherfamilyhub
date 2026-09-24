@@ -2774,7 +2774,6 @@ function MfgReservationsSection({ section }) {
   const [jkOnly, setJkOnly] = useState(false);
   const [crFrom, setCrFrom] = useState(""); const [crTo, setCrTo] = useState("");
   const [ciFrom, setCiFrom] = useState(""); const [ciTo, setCiTo] = useState("");
-  const [page, setPage] = useState(0);
   const [tipFor, setTipFor] = useState(null);
   // The tab shows a rolling created-date window: the last 5 days at first,
   // extended 5 days per "Show more" click — the full 23K rows are never all
@@ -2783,7 +2782,8 @@ function MfgReservationsSection({ section }) {
   // the whole history.
   const previewDays = section.previewDays || 5;
   const [windowDays, setWindowDays] = useState(previewDays);
-  const PAGE = 100;
+  // Filtered/search results reveal 200 at a time.
+  const [filterCap, setFilterCap] = useState(200);
   const anyBr = Object.values(brSel).some(Boolean);
   const filtersActive = !!(q || anyBr || jkOnly || crFrom || crTo || ciFrom || ciTo);
   const wantFull = filtersActive || windowDays > previewDays;
@@ -2848,9 +2848,8 @@ function MfgReservationsSection({ section }) {
     return out;
   }, [rows, q, brSel, anyBr, jkOnly, crFrom, crTo, ciFrom, ciTo, sort, filtersActive, windowFloor]);
 
-  useEffect(() => { setPage(0); }, [q, brSel, jkOnly, crFrom, crTo, ciFrom, ciTo, windowDays]);
-  const pageRows = filtered.slice(page * PAGE, (page + 1) * PAGE);
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  useEffect(() => { setFilterCap(200); }, [q, brSel, jkOnly, crFrom, crTo, ciFrom, ciTo]);
+  const visible = filtersActive ? filtered.slice(0, filterCap) : filtered;
 
   const COLS = [
     ["name", "Listing"], ["br", "BR"], ["cr", "Created"], ["ci", "Check In"],
@@ -2893,34 +2892,18 @@ function MfgReservationsSection({ section }) {
       </div>
 
       <div style={{ ...MFG_CARD, overflowX: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
-          <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {!filtersActive ? (
-              <>
-                {filtered.length.toLocaleString()} bookings created in the last {windowDays} days
-                {!(Array.isArray(shardRows) && filtered.length === rows.length) && (
-                  <button onClick={() => setWindowDays(windowDays + 5)} style={MFG_CHIP(true)}>
-                    Show 5 more days
-                  </button>
-                )}
-              </>
-            ) : (
-              <>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} reservations</>
-            )}
-            {wantFull && shardRows === null && " · loading history…"}
-            {wantFull && shardRows === "error" && " · full history unavailable, recent bookings only"}
-          </span>
-          <span style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, fontWeight: 700, color: T.inkSoft }}>
-            <button disabled={page === 0} onClick={() => setPage(page - 1)} style={{ ...MFG_CHIP(false), opacity: page === 0 ? 0.4 : 1 }}>← Prev</button>
-            page {page + 1} / {pages}
-            <button disabled={page >= pages - 1} onClick={() => setPage(page + 1)} style={{ ...MFG_CHIP(false), opacity: page >= pages - 1 ? 0.4 : 1 }}>Next →</button>
-          </span>
+        <div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700, marginBottom: 6 }}>
+          {!filtersActive
+            ? `${filtered.length.toLocaleString()} bookings created in the last ${windowDays} days`
+            : `showing ${visible.length.toLocaleString()} of ${filtered.length.toLocaleString()} matching reservations`}
+          {wantFull && shardRows === null && " · loading history…"}
+          {wantFull && shardRows === "error" && " · full history unavailable, recent bookings only"}
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr>{COLS.map(([c, l], i) => th(c, l, i === 0))}</tr></thead>
           <tbody>
-            {pageRows.map((r, i) => (
-              <tr key={`${page}-${i}`}>
+            {visible.map((r, i) => (
+              <tr key={i}>
                 <td style={{ ...td(true), whiteSpace: "normal", minWidth: 160 }}>{r.name}{r.jk && <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fff", background: T.marigoldDeep, borderRadius: 999, padding: "1px 6px", marginLeft: 6 }}>JK</span>}</td>
                 <td style={td()}>{r.br}</td>
                 <td style={td()}>{r.cr}</td>
@@ -2933,14 +2916,14 @@ function MfgReservationsSection({ section }) {
                 <td style={td()}>{money(r.adr)}</td>
                 <td style={td()}>{money(r.rr)}</td>
                 <td style={{ ...td(), position: "relative" }}
-                  onMouseEnter={() => r.la != null && setTipFor(`${page}-${i}`)}
+                  onMouseEnter={() => r.la != null && setTipFor(i)}
                   onMouseLeave={() => setTipFor(null)}>
                   {r.la != null ? (
                     <span style={{ color: r.adr != null && r.adr >= r.la ? T.leaf : T.coral, fontWeight: 700, cursor: "default", borderBottom: `1px dotted ${T.inkSoft}` }}>
                       {money(r.la)}
                     </span>
                   ) : "–"}
-                  {tipFor === `${page}-${i}` && (
+                  {tipFor === i && (
                     <div style={{
                       position: "absolute", right: 0, bottom: "100%", zIndex: 10,
                       background: T.ink, color: "#fff", borderRadius: 10, padding: "8px 11px",
@@ -2956,6 +2939,18 @@ function MfgReservationsSection({ section }) {
             ))}
           </tbody>
         </table>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+          {!filtersActive && !(Array.isArray(shardRows) && filtered.length === rows.length) && (
+            <button onClick={() => setWindowDays(windowDays + 5)} style={MFG_CHIP(true)}>
+              Show 5 more days
+            </button>
+          )}
+          {filtersActive && filtered.length > visible.length && (
+            <button onClick={() => setFilterCap(filterCap + 200)} style={MFG_CHIP(true)}>
+              Show 200 more ({(filtered.length - visible.length).toLocaleString()} remaining)
+            </button>
+          )}
+        </div>
       </div>
       {section.note && <MfgNoteSection section={{ text: section.note }} />}
     </div>
