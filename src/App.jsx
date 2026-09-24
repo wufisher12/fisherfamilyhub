@@ -2776,11 +2776,17 @@ function MfgReservationsSection({ section }) {
   const [ciFrom, setCiFrom] = useState(""); const [ciTo, setCiTo] = useState("");
   const [page, setPage] = useState(0);
   const [tipFor, setTipFor] = useState(null);
-  // The tab opens on the small inline preview (bookings created in the last
-  // few days); the full shard download starts only when the user asks for
-  // everything or uses a filter/search/sort that needs the full history.
-  const [wantFull, setWantFull] = useState(false);
+  // The tab shows a rolling created-date window: the last 5 days at first,
+  // extended 5 days per "Show more" click — the full 23K rows are never all
+  // on screen. The shard download happens once, in the background, the first
+  // time the window grows past the inline preview or a filter/search needs
+  // the whole history.
+  const previewDays = section.previewDays || 5;
+  const [windowDays, setWindowDays] = useState(previewDays);
   const PAGE = 100;
+  const anyBr = Object.values(brSel).some(Boolean);
+  const filtersActive = !!(q || anyBr || jkOnly || crFrom || crTo || ciFrom || ciTo);
+  const wantFull = filtersActive || windowDays > previewDays;
 
   useEffect(() => {
     if (!wantFull) return;
@@ -2820,10 +2826,13 @@ function MfgReservationsSection({ section }) {
   }), [raw, section.listings]);
 
   const brs = [...new Set(rows.map((r) => String(r.br)))].sort((a, b) => (parseInt(a) || 99) - (parseInt(b) || 99));
-  const anyBr = Object.values(brSel).some(Boolean);
+  // The rolling window applies only while no explicit filters are set;
+  // any filter or search queries the complete history instead.
+  const windowFloor = resAddDays(section.asOf, -(windowDays - 1));
   const filtered = React.useMemo(() => {
     let out = rows.filter((r) =>
-      (!q || r.name.toLowerCase().includes(q.toLowerCase()))
+      (filtersActive || r.cr >= windowFloor)
+      && (!q || r.name.toLowerCase().includes(q.toLowerCase()))
       && (!anyBr || brSel[String(r.br)])
       && (!jkOnly || r.jk)
       && (!crFrom || r.cr >= crFrom) && (!crTo || r.cr <= crTo)
@@ -2837,12 +2846,9 @@ function MfgReservationsSection({ section }) {
       return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
     });
     return out;
-  }, [rows, q, brSel, anyBr, jkOnly, crFrom, crTo, ciFrom, ciTo, sort]);
+  }, [rows, q, brSel, anyBr, jkOnly, crFrom, crTo, ciFrom, ciTo, sort, filtersActive, windowFloor]);
 
-  useEffect(() => {
-    setPage(0);
-    if (q || anyBr || jkOnly || crFrom || crTo || ciFrom || ciTo) setWantFull(true);
-  }, [q, brSel, anyBr, jkOnly, crFrom, crTo, ciFrom, ciTo]);
+  useEffect(() => { setPage(0); }, [q, brSel, jkOnly, crFrom, crTo, ciFrom, ciTo, windowDays]);
   const pageRows = filtered.slice(page * PAGE, (page + 1) * PAGE);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
 
@@ -2851,10 +2857,7 @@ function MfgReservationsSection({ section }) {
     ["co", "Check Out"], ["ni", "Nights"], ["bw", "BW"], ["mo", "CI Month"],
     ["yr", "CI Year"], ["adr", "ADR"], ["rr", "Total Rent"], ["la", "LY ADR"],
   ];
-  const clickCol = (c) => {
-    setWantFull(true);
-    setSort((s) => s.col === c ? { col: c, dir: -s.dir } : { col: c, dir: -1 });
-  };
+  const clickCol = (c) => setSort((s) => s.col === c ? { col: c, dir: -s.dir } : { col: c, dir: -1 });
   const th = (c, label, first) => (
     <th key={c} onClick={() => clickCol(c)} title="Sort" style={{
       textAlign: first ? "left" : "right", fontSize: 10.5, fontWeight: 800,
@@ -2892,20 +2895,20 @@ function MfgReservationsSection({ section }) {
       <div style={{ ...MFG_CARD, overflowX: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
           <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {!wantFull ? (
+            {!filtersActive ? (
               <>
-                {filtered.length.toLocaleString()} bookings created in the last {section.previewDays || 5} days
-                <button onClick={() => setWantFull(true)} style={MFG_CHIP(true)}>
-                  Show all {(section.count || 0).toLocaleString()}
-                </button>
+                {filtered.length.toLocaleString()} bookings created in the last {windowDays} days
+                {!(Array.isArray(shardRows) && filtered.length === rows.length) && (
+                  <button onClick={() => setWindowDays(windowDays + 5)} style={MFG_CHIP(true)}>
+                    Show 5 more days
+                  </button>
+                )}
               </>
             ) : (
-              <>
-                {filtered.length.toLocaleString()} of {rows.length.toLocaleString()} reservations
-                {shardRows === null && " · loading full history…"}
-                {shardRows === "error" && " · full history unavailable, showing recent bookings only"}
-              </>
+              <>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} reservations</>
             )}
+            {wantFull && shardRows === null && " · loading history…"}
+            {wantFull && shardRows === "error" && " · full history unavailable, recent bookings only"}
           </span>
           <span style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, fontWeight: 700, color: T.inkSoft }}>
             <button disabled={page === 0} onClick={() => setPage(page - 1)} style={{ ...MFG_CHIP(false), opacity: page === 0 ? 0.4 : 1 }}>← Prev</button>
