@@ -309,11 +309,14 @@ const CLIENTS = [
   { id: "kauai", label: "Kauai Real Estate Group", abbr: "KREG" },
   { id: "ohana", label: "Ohana Vacations", abbr: "OV" },
   { id: "giantsridge", label: "The Villas at Giants Ridge", abbr: "VGR" },
+  // Anonymized Bear Camp mirror for prospect demos - portal only, never a
+  // To Do List category.
+  { id: "demo", label: "Demo Account", abbr: "DEMO", demo: true },
 ];
 const clientOf = (id) => CLIENTS.find((c) => c.id === id);
 
 const TD_CATS = [
-  ...CLIENTS.map((c) => ({ ...c, color: "#2F6D54" })),
+  ...CLIENTS.filter((c) => !c.demo).map((c) => ({ ...c, color: "#2F6D54" })),
   { id: "realty", label: "Realty Advisors", abbr: "RA", color: "#33608A" },
   { id: "personal", label: "Personal", abbr: "PERS", color: "#9E3B2F" },
 ];
