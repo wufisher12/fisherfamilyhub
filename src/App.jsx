@@ -3680,6 +3680,17 @@ function MFGRevenueTracking({ userEmail }) {
 /*  hub/mfg-finance-{year} doc as Revenue Tracking; expense rows,      */
 /*  mileage and SEP live in that doc under `pnl` and are team-edited.  */
 /* ------------------------------------------------------------------ */
+// Home office inputs (Form 8829): FULL home amounts per month; the
+// statement takes the business percentage plus monthly depreciation.
+const PNL_HOME = [
+  ["mortgage-interest", "Mortgage Interest"],
+  ["taxes", "Real Estate Taxes"],
+  ["insurance", "Homeowners Insurance"],
+  ["repairs", "Repairs & Maintenance"],
+  ["utilities", "Utilities"],
+  ["other", "Other Home Expenses"],
+];
+
 // Default template (2026 onward), aligned to the filed Schedule C rows;
 // Mike 2026-10-05. Office Expense & Technology consolidates supplies,
 // computer equipment, printer ink, laptops, screens. A year doc can still
@@ -3740,7 +3751,20 @@ function MFGCompanyPnL({ userEmail }) {
     const mi = mval(pnl.mileage, i + 1), rt = mval(mRates, i + 1);
     return mi != null && rt ? Math.round(mi * rt * 100) / 100 : null;
   });
-  const expVal = (k, i) => (autoCar && k === "car-truck" ? carByMonth[i] : mval(exp[k], i + 1));
+  // Business use of home auto-compute (Form 8829): full home inputs x the
+  // business percentage, plus 1/12 of annual depreciation each month.
+  const homePct = pnl.homePct;
+  const homeDepr = pnl.homeDepr || 0;
+  const autoHome = homePct != null && expRows.some(([k]) => k === "home-office");
+  const homeInputsByMonth = FIN_MONTHS.map((_, i) =>
+    PNL_HOME.reduce((a, [k]) => a + (mval(pnl.home?.[k], i + 1) || 0), 0));
+  const homeByMonth = FIN_MONTHS.map((_, i) => (autoHome
+    ? Math.round((homeInputsByMonth[i] * homePct + homeDepr / 12) * 100) / 100
+    : null));
+  const expVal = (k, i) =>
+    (autoCar && k === "car-truck") ? carByMonth[i]
+    : (autoHome && k === "home-office") ? homeByMonth[i]
+    : mval(exp[k], i + 1);
   const expByMonth = FIN_MONTHS.map((_, i) =>
     expRows.reduce((a, [k]) => a + (expVal(k, i) || 0), 0));
   const netByMonth = FIN_MONTHS.map((_, i) => gpByMonth[i] - expByMonth[i]);
@@ -3865,26 +3889,31 @@ function MFGCompanyPnL({ userEmail }) {
               <td colSpan={14} style={{ ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, color: MFG_RED, background: "#FDF3F2", borderTop: `2px solid ${T.ink}` }}>Expenses</td>
             </tr>
             {expRows.map(([k, label], ri) => {
+              const zebra = ri % 2 === 1;
+              const autoRow = (vals, hint, titleAt) => (
+                <tr key={k} style={{ background: zebra ? ZEBRA : "#fff" }}>
+                  <td style={{ ...tdName(zebra ? ZEBRA : "#fff"), fontWeight: 600, paddingLeft: 20 }} title={hint}>
+                    {label} <span style={{ fontSize: 10, fontWeight: 800, color: T.inkSoft }}>AUTO</span>
+                  </td>
+                  {FIN_MONTHS.map((_, i) => (
+                    <td key={i} style={tdR} title={titleAt(i)}>
+                      {vals[i] != null && vals[i] !== 0 ? <span style={{ color: T.coral }}>({finMoney(vals[i])})</span> : "–"}
+                    </td>
+                  ))}
+                  <td style={{ ...tdR, fontWeight: 700, background: BAND_TOTAL, color: T.coral }}>
+                    {tot(vals.map((v) => v || 0)) ? <>({finMoney(tot(vals.map((v) => v || 0)))})</> : "–"}
+                  </td>
+                </tr>
+              );
               if (autoCar && k === "car-truck") {
-                const zebra = ri % 2 === 1;
-                return (
-                  <tr key={k} style={{ background: zebra ? ZEBRA : "#fff" }}>
-                    <td style={{ ...tdName(zebra ? ZEBRA : "#fff"), fontWeight: 600, paddingLeft: 20 }}
-                      title="Computed from the Mileage row at the IRS rate">
-                      {label} <span style={{ fontSize: 10, fontWeight: 800, color: T.inkSoft }}>AUTO</span>
-                    </td>
-                    {FIN_MONTHS.map((_, i) => (
-                      <td key={i} style={tdR} title={mval(mRates, i + 1) ? `${mval(pnl.mileage, i + 1) ?? 0} mi × $${mval(mRates, i + 1)}` : undefined}>
-                        {carByMonth[i] != null ? <span style={{ color: T.coral }}>({finMoney(carByMonth[i])})</span> : "–"}
-                      </td>
-                    ))}
-                    <td style={{ ...tdR, fontWeight: 700, background: BAND_TOTAL, color: T.coral }}>
-                      {tot(carByMonth.map((v) => v || 0)) ? <>({finMoney(tot(carByMonth.map((v) => v || 0)))})</> : "–"}
-                    </td>
-                  </tr>
-                );
+                return autoRow(carByMonth, "Computed from the Mileage row at the IRS rate",
+                  (i) => (mval(mRates, i + 1) ? `${mval(pnl.mileage, i + 1) ?? 0} mi × $${mval(mRates, i + 1)}` : undefined));
               }
-              return editRow(k, label, exp[k], (m, v) => ({ pnl: { expenses: { [k]: { [String(m)]: v } } } }), { zebra: ri % 2 === 1 });
+              if (autoHome && k === "home-office") {
+                return autoRow(homeByMonth, "Computed from the Home Office Inputs block below",
+                  (i) => `$${Math.round(homeInputsByMonth[i]).toLocaleString()} home costs × ${(homePct * 100).toFixed(2)}% + $${Math.round(homeDepr / 12)} depreciation`);
+              }
+              return editRow(k, label, exp[k], (m, v) => ({ pnl: { expenses: { [k]: { [String(m)]: v } } } }), { zebra });
             })}
             {bandRow("Total Expenses", expByMonth, { bg: RED_BG, ink: T.coral, paren: true })}
             {bandRow("Net Income", netByMonth, { bg: BAND_TOTAL, ink: (v) => (v < 0 ? T.coral : T.leaf), rule: true })}
@@ -3893,6 +3922,44 @@ function MFGCompanyPnL({ userEmail }) {
               { indent: 10, color: T.ink, paren: false, money: false })}
             {editRow("sep", "SEP Contribution", pnl.sep, (m, v) => ({ pnl: { sep: { [String(m)]: v } } }),
               { indent: 10, color: T.ink, paren: false })}
+            {autoHome && (
+              <>
+                <tr><td colSpan={14} style={{ padding: 6, border: "none" }} /></tr>
+                <tr>
+                  <td colSpan={14} style={{ ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, color: T.ink, background: HEADER_BG, borderTop: `2px solid ${T.ink}`, position: "relative" }}>
+                    Home Office Inputs (Form 8829)
+                    <button onClick={() => { setEditor({ key: "home-cfg" }); setDraft({ pct: (homePct * 100).toFixed(2), depr: homeDepr || "" }); }}
+                      style={{ border: "none", background: "transparent", cursor: "pointer", color: "#1F6FB2", fontSize: 11.5, fontWeight: 800, marginLeft: 12, fontFamily: "Inter, sans-serif" }}>
+                      business use {(homePct * 100).toFixed(2)}% · depreciation {finMoney(homeDepr, "$0")}/yr · edit
+                    </button>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: T.inkSoft, fontStyle: "italic", marginLeft: 10 }}>
+                      enter FULL home amounts; the statement takes the business share plus monthly depreciation
+                    </span>
+                    {editor?.key === "home-cfg" && popover(<>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: T.ink }}>Home office settings · {year}</div>
+                      <label style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, display: "flex", flexDirection: "column", gap: 3 }}>
+                        Business use of home (%)
+                        <input autoFocus value={draft.pct ?? ""} onChange={(e) => setDraft((d) => ({ ...d, pct: e.target.value }))}
+                          onKeyDown={(e) => e.key === "Escape" && setEditor(null)} style={{ ...MFG_INPUT, fontWeight: 600 }} />
+                      </label>
+                      <label style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, display: "flex", flexDirection: "column", gap: 3 }}>
+                        Annual depreciation ($, Form 8829 line 42)
+                        <input value={draft.depr ?? ""} onChange={(e) => setDraft((d) => ({ ...d, depr: e.target.value }))}
+                          onKeyDown={(e) => e.key === "Escape" && setEditor(null)} style={{ ...MFG_INPUT, fontWeight: 600 }} />
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button disabled={saving} onClick={() => save({ pnl: { homePct: (num(draft.pct) || 0) / 100, homeDepr: num(draft.depr) || 0 } })}
+                          style={MFG_CHIP(true)}>{saving ? "Saving…" : "Save"}</button>
+                        <button onClick={() => setEditor(null)} style={MFG_CHIP(false)}>Cancel</button>
+                      </div>
+                    </>)}
+                  </td>
+                </tr>
+                {PNL_HOME.map(([k, label], ri) =>
+                  editRow("home-" + k, label, pnl.home?.[k], (m, v) => ({ pnl: { home: { [k]: { [String(m)]: v } } } }),
+                    { indent: 20, color: T.ink, paren: false, zebra: ri % 2 === 1 }))}
+              </>
+            )}
           </tbody>
         </table>
       </div>
