@@ -39,10 +39,13 @@ service cloud.firestore {
     match /hub/{docId} {
       allow read: if docId.matches('mfg-.*')
         ? (isTeam() || isClientFor(docId))
-        : (isFamily() || (isBrief() && docId.matches('plan-.*')));
+        : (isFamily()
+           || (isBrief() && docId.matches('plan-.*'))
+           // The To Do List is shared with the portal's Customer List tab.
+           || (isTeam() && docId == 'todolist'));
       allow write: if docId.matches('mfg-.*')
         ? (isTeam() || isClientFor(docId))
-        : isFamily();
+        : (isFamily() || (isTeam() && docId == 'todolist'));
     }
   }
 }

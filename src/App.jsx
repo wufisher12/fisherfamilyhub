@@ -317,6 +317,7 @@ const clientOf = (id) => CLIENTS.find((c) => c.id === id);
 
 const TD_CATS = [
   ...CLIENTS.filter((c) => !c.demo).map((c) => ({ ...c, color: "#2F6D54" })),
+  { id: "164apr", label: "164 Annable Point Road", abbr: "164APR", color: "#33608A" },
   { id: "realty", label: "Realty Advisors", abbr: "RA", color: "#33608A" },
   { id: "personal", label: "Personal", abbr: "PERS", color: "#9E3B2F" },
 ];
@@ -3163,6 +3164,103 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Customer List — dashboard cards + the shared To Do List, merged.   */
+/*  Same hub/todolist document as the family app; team-only access     */
+/*  comes from the rules' todolist carve-out. Blocks never re-order.   */
+/* ------------------------------------------------------------------ */
+const PORTAL_TD_BLUE = "#1F6FB2";
+const PORTAL_TD = [
+  ...CLIENTS.filter((c) => !c.demo).map((c) => ({ ...c, dash: true, blue: false })),
+  ...CLIENTS.filter((c) => c.demo).map((c) => ({ ...c, dash: true, blue: true })),
+  { id: "164apr", label: "164 Annable Point Road", abbr: "164APR", blue: true },
+  { id: "realty", label: "Realty Advisors", abbr: "RA", blue: true },
+  { id: "personal", label: "Personal", abbr: "PERS", blue: true },
+];
+
+function MFGCustomerList() {
+  const tdDoc = useMfgHubDoc("todolist");
+  const [drafts, setDrafts] = useState({});
+  const [busyId, setBusyId] = useState(null);
+  const person = tdDoc?.mike || {};
+  const items = person.items || [];
+  const denied = tdDoc === null;
+
+  const persist = async (nextItems) => {
+    await setDoc(doc(mfgDb, "hub", "todolist"),
+      { ...(tdDoc || {}), mike: { ...person, items: nextItems } });
+  };
+  const addItem = async (catId) => {
+    const t = (drafts[catId] || "").trim();
+    if (!t || tdDoc === undefined) return;
+    setDrafts((d) => ({ ...d, [catId]: "" }));
+    try {
+      await persist([...items, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: t, cat: catId, createdAt: Date.now() }]);
+    } catch (e) { alert(`Could not save (${e.code || e.message}).`); }
+  };
+  const complete = async (item) => {
+    setBusyId(item.id);
+    try {
+      // Plan-day syncing stays family-side; here checking off just clears it.
+      await persist(items.filter((x) => x.id !== item.id));
+    } catch (e) { alert(`Could not save (${e.code || e.message}).`); }
+    setBusyId(null);
+  };
+
+  return (
+    <div>
+      {denied && (
+        <MfgNoteSection section={{ text: "The to-do list is not readable from this login yet — publish the updated firestore.rules (team access to the todolist document) and reload." }} />
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12 }}>
+        {PORTAL_TD.map((c) => {
+          const accent = c.blue ? PORTAL_TD_BLUE : MFG_RED;
+          const open = items.filter((x) => x.cat === c.id);
+          return (
+            <div key={c.id} style={{
+              background: "#fff", border: `1px solid ${T.line}`, borderTop: `4px solid ${accent}`,
+              borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: T.ink }}>{c.label}</div>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: accent, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{c.abbr}</span>
+              </div>
+              {c.dash && (
+                <button onClick={() => window.open(`${window.location.pathname}?portal=mfg&client=${c.id}`, "_blank")}
+                  style={{ border: "none", background: "transparent", color: accent, cursor: "pointer", fontSize: 12, fontWeight: 800, padding: 0, textAlign: "left", fontFamily: "Inter, sans-serif" }}>
+                  Open dashboard →
+                </button>
+              )}
+              <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 5, minHeight: 20 }}>
+                {open.length === 0 && <div style={{ fontSize: 12, color: "#A9B2BB" }}>No open tasks</div>}
+                {open.map((it) => (
+                  <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                    <button onClick={() => complete(it)} disabled={busyId === it.id} title="Mark done"
+                      style={{
+                        width: 16, height: 16, marginTop: 1, borderRadius: 5, flexShrink: 0, cursor: "pointer",
+                        border: `2px solid ${accent}`, background: "transparent", opacity: busyId === it.id ? 0.4 : 1,
+                      }} />
+                    <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.35 }}>
+                      {it.text}
+                      {it.due && <span style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, marginLeft: 6 }}>→ {fmtDateKey(it.due)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
+                <input value={drafts[c.id] || ""} onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && addItem(c.id)} placeholder="Add a task…"
+                  style={{ ...MFG_INPUT, flex: 1, fontSize: 12.5, padding: "6px 10px" }} />
+                <button onClick={() => addItem(c.id)} style={{ ...MFG_CHIP(true), padding: "4px 11px" }}>+</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Revenue Tracking — received-basis revenue log + AR + Gross Profit  */
 /*  Team-only. Data lives in hub/mfg-finance-{year}, edited in place.  */
 /* ------------------------------------------------------------------ */
@@ -3535,7 +3633,7 @@ function MFGPortal({ clientParam }) {
   const tabs = [
     { id: "company", label: "Company Overview" },
     { id: "revenue", label: "Revenue Tracking" },
-    { id: "customers", label: "Customer Dashboards" },
+    { id: "customers", label: "Customer List" },
   ];
 
   return (
@@ -3591,27 +3689,7 @@ function MFGPortal({ clientParam }) {
           </>
         )}
         {tab === "revenue" && <MFGRevenueTracking userEmail={user.email} />}
-        {tab === "customers" && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
-            {MFG_CLIENTS.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => window.open(`${window.location.pathname}?portal=mfg&client=${c.id}`, "_blank")}
-                style={{
-                  background: "#fff", border: `1px solid ${T.line}`, borderTop: `4px solid ${MFG_RED}`,
-                  borderRadius: 14, padding: "18px 16px", cursor: "pointer", textAlign: "left",
-                  fontFamily: "Inter, sans-serif",
-                }}
-              >
-                <div style={{ fontSize: 15.5, fontWeight: 800, color: T.ink, marginBottom: 4 }}>{c.label}</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: MFG_RED, borderRadius: 999, padding: "2px 9px" }}>{c.abbr}</span>
-                  <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>Open dashboard →</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+        {tab === "customers" && <MFGCustomerList />}
       </div>
     </div>
   );
