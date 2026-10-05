@@ -3761,9 +3761,18 @@ function MFGCompanyPnL({ userEmail }) {
   const homeByMonth = FIN_MONTHS.map((_, i) => (autoHome
     ? Math.round((homeInputsByMonth[i] * homePct + homeDepr / 12) * 100) / 100
     : null));
+  // Phone & Internet auto-compute: full bill x its own business percentage
+  // (not the home office share; the filed business use runs much higher).
+  const phonePct = pnl.phonePct;
+  const autoPhone = phonePct != null && expRows.some(([k]) => k === "phone");
+  const phoneByMonth = FIN_MONTHS.map((_, i) => {
+    const full = mval(pnl.phoneFull, i + 1);
+    return autoPhone && full != null ? Math.round(full * phonePct * 100) / 100 : null;
+  });
   const expVal = (k, i) =>
     (autoCar && k === "car-truck") ? carByMonth[i]
     : (autoHome && k === "home-office") ? homeByMonth[i]
+    : (autoPhone && k === "phone") ? phoneByMonth[i]
     : mval(exp[k], i + 1);
   const expByMonth = FIN_MONTHS.map((_, i) =>
     expRows.reduce((a, [k]) => a + (expVal(k, i) || 0), 0));
@@ -3913,6 +3922,10 @@ function MFGCompanyPnL({ userEmail }) {
                 return autoRow(homeByMonth, "Computed from the Home Office Inputs block below",
                   (i) => `$${Math.round(homeInputsByMonth[i]).toLocaleString()} home costs × ${(homePct * 100).toFixed(2)}% + $${Math.round(homeDepr / 12)} depreciation`);
               }
+              if (autoPhone && k === "phone") {
+                return autoRow(phoneByMonth, "Computed from the full bill in the inputs block below",
+                  (i) => (mval(pnl.phoneFull, i + 1) != null ? `$${mval(pnl.phoneFull, i + 1)} full bill × ${(phonePct * 100).toFixed(2)}%` : undefined));
+              }
               return editRow(k, label, exp[k], (m, v) => ({ pnl: { expenses: { [k]: { [String(m)]: v } } } }), { zebra });
             })}
             {bandRow("Total Expenses", expByMonth, { bg: RED_BG, ink: T.coral, paren: true })}
@@ -3922,21 +3935,21 @@ function MFGCompanyPnL({ userEmail }) {
               { indent: 10, color: T.ink, paren: false, money: false })}
             {editRow("sep", "SEP Contribution", pnl.sep, (m, v) => ({ pnl: { sep: { [String(m)]: v } } }),
               { indent: 10, color: T.ink, paren: false })}
-            {autoHome && (
+            {(autoHome || autoPhone) && (
               <>
                 <tr><td colSpan={14} style={{ padding: 6, border: "none" }} /></tr>
                 <tr>
                   <td colSpan={14} style={{ ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, color: T.ink, background: HEADER_BG, borderTop: `2px solid ${T.ink}`, position: "relative" }}>
-                    Home Office Inputs (Form 8829)
-                    <button onClick={() => { setEditor({ key: "home-cfg" }); setDraft({ pct: (homePct * 100).toFixed(2), depr: homeDepr || "" }); }}
+                    Home Office & Phone Inputs
+                    <button onClick={() => { setEditor({ key: "home-cfg" }); setDraft({ pct: homePct != null ? (homePct * 100).toFixed(2) : "", depr: homeDepr || "", ppct: phonePct != null ? (phonePct * 100).toFixed(2) : "" }); }}
                       style={{ border: "none", background: "transparent", cursor: "pointer", color: "#1F6FB2", fontSize: 11.5, fontWeight: 800, marginLeft: 12, fontFamily: "Inter, sans-serif" }}>
-                      business use {(homePct * 100).toFixed(2)}% · depreciation {finMoney(homeDepr, "$0")}/yr · edit
+                      {autoHome ? `home ${(homePct * 100).toFixed(2)}% · depreciation ${finMoney(homeDepr, "$0")}/yr · ` : ""}{autoPhone ? `phone ${(phonePct * 100).toFixed(2)}% · ` : ""}edit
                     </button>
                     <span style={{ fontSize: 11, fontWeight: 600, color: T.inkSoft, fontStyle: "italic", marginLeft: 10 }}>
-                      enter FULL home amounts; the statement takes the business share plus monthly depreciation
+                      enter FULL amounts; the statement takes each business share (home office adds monthly depreciation)
                     </span>
                     {editor?.key === "home-cfg" && popover(<>
-                      <div style={{ fontSize: 11.5, fontWeight: 800, color: T.ink }}>Home office settings · {year}</div>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: T.ink }}>Auto-compute settings · {year}</div>
                       <label style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, display: "flex", flexDirection: "column", gap: 3 }}>
                         Business use of home (%)
                         <input autoFocus value={draft.pct ?? ""} onChange={(e) => setDraft((d) => ({ ...d, pct: e.target.value }))}
@@ -3947,17 +3960,25 @@ function MFGCompanyPnL({ userEmail }) {
                         <input value={draft.depr ?? ""} onChange={(e) => setDraft((d) => ({ ...d, depr: e.target.value }))}
                           onKeyDown={(e) => e.key === "Escape" && setEditor(null)} style={{ ...MFG_INPUT, fontWeight: 600 }} />
                       </label>
+                      <label style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, display: "flex", flexDirection: "column", gap: 3 }}>
+                        Phone & Internet business use (%)
+                        <input value={draft.ppct ?? ""} onChange={(e) => setDraft((d) => ({ ...d, ppct: e.target.value }))}
+                          onKeyDown={(e) => e.key === "Escape" && setEditor(null)} style={{ ...MFG_INPUT, fontWeight: 600 }} />
+                      </label>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button disabled={saving} onClick={() => save({ pnl: { homePct: (num(draft.pct) || 0) / 100, homeDepr: num(draft.depr) || 0 } })}
+                        <button disabled={saving} onClick={() => save({ pnl: { homePct: (num(draft.pct) || 0) / 100, homeDepr: num(draft.depr) || 0, phonePct: (num(draft.ppct) || 0) / 100 } })}
                           style={MFG_CHIP(true)}>{saving ? "Saving…" : "Save"}</button>
                         <button onClick={() => setEditor(null)} style={MFG_CHIP(false)}>Cancel</button>
                       </div>
                     </>)}
                   </td>
                 </tr>
-                {PNL_HOME.map(([k, label], ri) =>
+                {autoHome && PNL_HOME.map(([k, label], ri) =>
                   editRow("home-" + k, label, pnl.home?.[k], (m, v) => ({ pnl: { home: { [k]: { [String(m)]: v } } } }),
                     { indent: 20, color: T.ink, paren: false, zebra: ri % 2 === 1 }))}
+                {autoPhone && editRow("phone-full", "Phone & Internet (full bill)", pnl.phoneFull,
+                  (m, v) => ({ pnl: { phoneFull: { [String(m)]: v } } }),
+                  { indent: 20, color: T.ink, paren: false, zebra: PNL_HOME.length % 2 === 1 })}
               </>
             )}
           </tbody>
