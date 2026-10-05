@@ -3715,6 +3715,10 @@ function MFGCompanyPnL({ userEmail }) {
     ? finDoc.wageLabels.map((w) => [w.k, w.label]) : FIN_EMPLOYEES;
   const pnl = finDoc?.pnl || {};
   const exp = pnl.expenses || {};
+  // Expense rows: the year's doc may carry its own row set (pnl.labels,
+  // e.g. 2025 mirrors the filed Schedule C); otherwise the default list.
+  const expRows = Array.isArray(pnl.labels) && pnl.labels.length
+    ? pnl.labels.map((w) => [w.k, w.label]) : PNL_EXPENSES;
 
   const revByMonth = FIN_MONTHS.map((_, i) =>
     clients.reduce((a, c) => a + (mval(c.paid, i + 1) || 0), 0));
@@ -3722,7 +3726,7 @@ function MFGCompanyPnL({ userEmail }) {
     wageRows.reduce((a, [k]) => a + (mval(wages[k], i + 1) || 0), 0));
   const gpByMonth = FIN_MONTHS.map((_, i) => revByMonth[i] - cosByMonth[i]);
   const expByMonth = FIN_MONTHS.map((_, i) =>
-    PNL_EXPENSES.reduce((a, [k]) => a + (mval(exp[k], i + 1) || 0), 0));
+    expRows.reduce((a, [k]) => a + (mval(exp[k], i + 1) || 0), 0));
   const netByMonth = FIN_MONTHS.map((_, i) => gpByMonth[i] - expByMonth[i]);
   const tot = (arr) => arr.reduce((a, b) => a + b, 0);
 
@@ -3844,7 +3848,7 @@ function MFGCompanyPnL({ userEmail }) {
             <tr>
               <td colSpan={14} style={{ ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, color: MFG_RED, background: "#FDF3F2", borderTop: `2px solid ${T.ink}` }}>Expenses</td>
             </tr>
-            {PNL_EXPENSES.map(([k, label], ri) =>
+            {expRows.map(([k, label], ri) =>
               editRow(k, label, exp[k], (m, v) => ({ pnl: { expenses: { [k]: { [String(m)]: v } } } }), { zebra: ri % 2 === 1 }))}
             {bandRow("Total Expenses", expByMonth, { bg: RED_BG, ink: T.coral, paren: true })}
             {bandRow("Net Income", netByMonth, { bg: BAND_TOTAL, ink: (v) => (v < 0 ? T.coral : T.leaf), rule: true })}
