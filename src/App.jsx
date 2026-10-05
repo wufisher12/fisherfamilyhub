@@ -3695,11 +3695,12 @@ const PNL_HOME = [
 // Mike 2026-10-05. Office Expense & Technology consolidates supplies,
 // computer equipment, printer ink, laptops, screens. A year doc can still
 // override with its own pnl.labels (2025 mirrors that year's filing).
+// Team wages (Rachel, Aida, Jaimee; historically filed as Vendors and
+// Contract Labor) live in Cost of Services, not here (Mike, 2026-10-05),
+// so the statement carries no Vendors or Contract Labor expense rows.
 const PNL_EXPENSES = [
   ["advertising", "Advertising"],
   ["car-truck", "Car and Truck (mileage)"],
-  ["vendors", "Vendors"],
-  ["contract-labor", "Contract Labor"],
   ["legal", "Legal and Professional Services"],
   ["office", "Office Expense & Technology"],
   ["travel", "Travel (24a)"],
