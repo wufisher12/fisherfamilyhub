@@ -2426,7 +2426,7 @@ function MfgTableSection({ section }) {
     boxShadow: `2px 0 0 ${T.line}`, minWidth: 150,
   });
   return (
-    <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
+    <div className="mfg-table-card" style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
       {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
@@ -3148,9 +3148,28 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
   // tables); everything else keeps the original 1100px column.
   const maxW = dash?.wide ? 1760 : 1100;
 
+  // Print styles for the Export PDF button (subtabs with `exportPdf: true`):
+  // one landscape Letter page of just the active tab's sections. Injected
+  // here because the portal never runs the family app's style effect.
+  useEffect(() => {
+    if (document.getElementById("mfg-print-css")) return;
+    const style = document.createElement("style");
+    style.id = "mfg-print-css";
+    style.textContent = `@media print {
+      @page { size: letter landscape; margin: 9mm; }
+      body { background: #fff !important; }
+      .mfg-noprint { display: none !important; }
+      .mfg-print-area { zoom: 0.6; }
+      .mfg-print-area * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .mfg-print-area .mfg-table-card { overflow: visible !important; border: none !important; }
+      .mfg-print-title { display: flex !important; }
+    }`;
+    document.head.appendChild(style);
+  }, []);
+
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
-      <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
+      <div className="mfg-noprint" style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
         <div style={{ maxWidth: maxW, margin: "0 auto", padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3191,16 +3210,19 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
         )}
         {dash && (
           <>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div className="mfg-noprint" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
               {sample && (
                 <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: T.marigoldDeep, borderRadius: 999, padding: "2px 9px" }}>SAMPLE DATA</span>
               )}
               {updatedText && (
                 <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>As of {updatedText}</span>
               )}
+              {(activeSub || activeTab)?.exportPdf && (
+                <button onClick={() => window.print()} style={MFG_CHIP(true)}>Export PDF</button>
+              )}
             </div>
             {subtabs && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <div className="mfg-noprint" style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
                 {subtabs.map((s) => (
                   <button key={s.id}
                     onClick={() => setSubFor((m) => ({ ...m, [activeTab.id]: s.id }))}
@@ -3210,9 +3232,20 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
                 ))}
               </div>
             )}
-            {sections?.length > 0
-              ? sections.map((s, i) => <MfgSection key={`${activeTab.id}-${activeSub ? activeSub.id : "x"}-${i}`} section={s} userEmail={userEmail} isTeam={isTeam} />)
-              : <MfgComingSoon />}
+            <div className="mfg-print-area">
+              <div className="mfg-print-title" style={{ display: "none", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, borderBottom: `3px solid ${T.ink}`, paddingBottom: 8 }}>
+                <div>
+                  <span style={{ fontSize: 22, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{client.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: T.inkSoft, marginLeft: 12 }}>{[activeTab?.label, activeSub?.label].filter(Boolean).join(" · ")}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>
+                  {updatedText ? `As of ${updatedText} · ` : ""}Prepared by Mike Fisher Group
+                </div>
+              </div>
+              {sections?.length > 0
+                ? sections.map((s, i) => <MfgSection key={`${activeTab.id}-${activeSub ? activeSub.id : "x"}-${i}`} section={s} userEmail={userEmail} isTeam={isTeam} />)
+                : <MfgComingSoon />}
+            </div>
           </>
         )}
       </div>

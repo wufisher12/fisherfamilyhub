@@ -129,3 +129,7 @@ Client logins (via the hub's roles) can read only their own document — already
   instead of blue); rows may carry `sub: true` (smaller, italic — for
   comparison lines under a primary row); sections may set `nowrapFirst: true`
   to keep first-column labels on one line.
+- Amendment 2: a tab or subtab may set `exportPdf: true` to show an
+  "Export PDF" button, which prints just that tab's sections as one
+  landscape Letter page (browser print-to-PDF; nav and controls hidden, a
+  print-only title line with client, tab and as-of date added).
