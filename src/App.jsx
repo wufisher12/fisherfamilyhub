@@ -3319,13 +3319,24 @@ function MFGRevenueTracking({ userEmail }) {
       )}
 
       <div style={{ ...MFG_CARD, overflowX: "auto" }}>
-        <MfgSectionTitle>Revenue by client — received basis · click a cell to log invoice & payment</MfgSectionTitle>
+        <div style={{ fontSize: 24, fontWeight: 800, color: MFG_RED, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Revenue</div>
+        <div style={{ fontSize: 11.5, color: T.inkSoft, fontStyle: "italic", margin: "2px 0 12px" }}>Received basis, logged by payment date · click a cell to log invoice & payment</div>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1340 }}>
-          <thead><tr>
-            <th style={thName}>Client</th>
-            {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
-            <th style={thTotal}>Total</th><th style={thProj}>Projected</th><th style={thPct}>% to Proj</th>
-          </tr></thead>
+          <thead>
+            {/* The year's money line rides on top, like the template sheet. */}
+            <tr style={{ background: BAND_TOTAL }}>
+              <td style={{ ...tdName(BAND_TOTAL), color: T.leaf, borderTop: "none" }}>Total received</td>
+              {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, color: T.leaf, borderTop: "none" }}>{finMoney(v, "$0")}</td>)}
+              <td style={{ ...tdTotal, color: T.leaf, borderTop: "none" }}>{finMoney(totalRecv, "$0")}</td>
+              <td style={{ ...tdProj, borderTop: "none" }}>{finMoney(totalProj)}</td>
+              <td style={{ ...tdR, fontWeight: 800, color: PCT_INK, borderTop: "none" }}>{totalProj ? `${((totalRecv / totalProj) * 100).toFixed(0)}%` : "–"}</td>
+            </tr>
+            <tr>
+              <th style={thName}>Client</th>
+              {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
+              <th style={thTotal}>Total</th><th style={thProj}>Projected</th><th style={thPct}>% to Proj</th>
+            </tr>
+          </thead>
           <tbody>
             {clients.map((c, ri) => {
               const total = FIN_MONTHS.reduce((a, _, i) => a + (mval(c.paid, i + 1) || 0), 0);
@@ -3376,30 +3387,23 @@ function MFGRevenueTracking({ userEmail }) {
                 </tr>
               );
             })}
-            {/* Money row reads in money green. */}
-            <tr style={{ background: BAND_TOTAL }}>
-              <td style={{ ...tdName(BAND_TOTAL), color: T.leaf, borderTop: `2px solid ${T.ink}` }}>Total received</td>
-              {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, color: T.leaf, borderTop: `2px solid ${T.ink}` }}>{finMoney(v, "$0")}</td>)}
-              <td style={{ ...tdTotal, color: T.leaf, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv, "$0")}</td>
-              <td style={{ ...tdProj, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalProj)}</td>
-              <td style={{ ...tdR, fontWeight: 800, color: PCT_INK, borderTop: `2px solid ${T.ink}` }}>{totalProj ? `${((totalRecv / totalProj) * 100).toFixed(0)}%` : "–"}</td>
-            </tr>
             <tr>
-              <td style={{ ...tdName(), fontWeight: 700 }}>Outstanding AR</td>
+              <td style={{ ...tdName(), fontWeight: 700, borderTop: `2px solid ${T.ink}` }}>Outstanding AR</td>
               {FIN_MONTHS.map((_, i) => {
                 const o = invByMonth[i] - recvByMonth[i];
-                return <td key={i} style={{ ...tdR, color: o > 0 ? T.coral : "#9AA6B2", fontWeight: o > 0 ? 800 : 500 }}>{o ? finMoney(o) : "–"}</td>;
+                return <td key={i} style={{ ...tdR, borderTop: `2px solid ${T.ink}`, color: o > 0 ? T.coral : "#9AA6B2", fontWeight: o > 0 ? 800 : 500 }}>{o ? finMoney(o) : "–"}</td>;
               })}
-              <td style={{ ...tdTotal, color: outstanding > 0 ? T.coral : T.leaf }}>{finMoney(outstanding, "$0")}</td>
-              <td style={{ ...tdProj }} />
-              <td style={tdR} />
+              <td style={{ ...tdTotal, borderTop: `2px solid ${T.ink}`, color: outstanding > 0 ? T.coral : T.leaf }}>{finMoney(outstanding, "$0")}</td>
+              <td style={{ ...tdProj, borderTop: `2px solid ${T.ink}` }} />
+              <td style={{ ...tdR, borderTop: `2px solid ${T.ink}` }} />
             </tr>
           </tbody>
         </table>
       </div>
 
       <div style={{ ...MFG_CARD, overflowX: "auto" }}>
-        <MfgSectionTitle>Gross Profit — revenue minus cost of services · click a wage cell to edit</MfgSectionTitle>
+        <div style={{ fontSize: 24, fontWeight: 800, color: MFG_RED, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Gross Profit</div>
+        <div style={{ fontSize: 11.5, color: T.inkSoft, fontStyle: "italic", margin: "2px 0 12px" }}>Revenue minus cost of services · click a wage cell to edit</div>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1180 }}>
           <thead><tr>
             <th style={thName} />
