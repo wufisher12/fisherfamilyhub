@@ -125,3 +125,7 @@ Client logins (via the hub's roles) can read only their own document — already
 - Row maps may carry `band: true` (light blue row highlight, bold text) and
   `rule: true` (2px top border separating blocks).
 - New cell tone `strong` — ink color, bold (for primary rows among muted ones).
+- Amendment (same day): `headerFill` also accepts `"gold"` (light gold band
+  instead of blue); rows may carry `sub: true` (smaller, italic — for
+  comparison lines under a primary row); sections may set `nowrapFirst: true`
+  to keep first-column labels on one line.
