@@ -3502,11 +3502,13 @@ function MFGRevenueTracking({ userEmail }) {
 
       <MfgNoteSection section={{ text: "Billed in arrears, logged on the RECEIVED date: January services are invoiced Jan 31 and count as February revenue. Enter each month's invoice when it goes out, then the amount paid — matching amounts mean $0 accounts receivable." }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
+      {/* Five tiles on one line (Mike, 2026-10-05): GP green, margin gold. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
         {tile("Received " + year, finMoney(totalRecv, "$0"), null, T.leaf)}
         {tile("Outstanding AR", finMoney(outstanding, "$0"), outstanding > 0 ? "invoiced, not yet paid" : "all invoices collected", outstanding > 0 ? T.coral : T.leaf)}
         {tile("% to Projection", totalProj ? `${((totalRecv / totalProj) * 100).toFixed(1)}%` : "–", totalProj ? `of ${finMoney(totalProj)} projected` : "set client projections")}
-        {tile("Gross Profit " + year, finMoney(totalRecv - totalWages, "$0"), totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}% margin` : null)}
+        {tile("Gross Profit " + year, finMoney(totalRecv - totalWages, "$0"), null, T.leaf)}
+        {tile("Gross Margin %", totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}%` : "–", "of received revenue", T.marigoldDeep)}
       </div>
 
       {editor?.add && (
