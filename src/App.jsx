@@ -3228,11 +3228,16 @@ function MFGRevenueTracking({ userEmail }) {
   // Total banded sky, Projected banded gold, % in blue (green at goal).
   const BAND_TOTAL = "#E7EFF6", BAND_PROJ = "#FBF3E2", ZEBRA = "#F5F7F9";
   const PROJ_INK = "#9C721E", PCT_INK = "#1F6FB2";
-  const th = { fontSize: 11.5, fontWeight: 800, color: T.ink, textTransform: "uppercase", letterSpacing: "0.04em", padding: "6px 10px 10px", textAlign: "right", whiteSpace: "nowrap" };
-  const thName = { ...th, textAlign: "left", position: "sticky", left: 0, background: "#fff", zIndex: 2, boxShadow: `2px 0 0 ${T.line}` };
-  const thTotal = { ...th, background: BAND_TOTAL };
-  const thProj = { ...th, color: PROJ_INK, background: BAND_PROJ };
-  const thPct = { ...th, color: PCT_INK };
+  // Header row: light blue, black type, larger than data rows, ruled off
+  // underneath (Mike, 2026-10-05).
+  const HEADER_BG = "#D9E9F6";
+  const th = {
+    fontSize: 13, fontWeight: 800, color: "#10181F", background: HEADER_BG,
+    textTransform: "uppercase", letterSpacing: "0.04em", padding: "9px 10px",
+    textAlign: "right", whiteSpace: "nowrap", borderBottom: `2px solid ${T.ink}`,
+  };
+  const thName = { ...th, textAlign: "left", position: "sticky", left: 0, zIndex: 2, boxShadow: `2px 0 0 ${T.line}` };
+  const thTotal = th, thProj = th, thPct = th;
   const tdR = { fontSize: 13.5, color: T.ink, padding: "9px 10px", borderTop: `1px solid ${T.line}`, textAlign: "right", whiteSpace: "nowrap" };
   const tdTotal = { ...tdR, fontWeight: 800, background: BAND_TOTAL };
   const tdProj = { ...tdR, color: PROJ_INK, fontWeight: 700, background: BAND_PROJ };
@@ -3371,10 +3376,11 @@ function MFGRevenueTracking({ userEmail }) {
                 </tr>
               );
             })}
+            {/* Money row reads in money green. */}
             <tr style={{ background: BAND_TOTAL }}>
-              <td style={{ ...tdName(BAND_TOTAL), borderTop: `2px solid ${T.ink}` }}>Total received</td>
-              {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{finMoney(v, "$0")}</td>)}
-              <td style={{ ...tdTotal, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv, "$0")}</td>
+              <td style={{ ...tdName(BAND_TOTAL), color: T.leaf, borderTop: `2px solid ${T.ink}` }}>Total received</td>
+              {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, color: T.leaf, borderTop: `2px solid ${T.ink}` }}>{finMoney(v, "$0")}</td>)}
+              <td style={{ ...tdTotal, color: T.leaf, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv, "$0")}</td>
               <td style={{ ...tdProj, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalProj)}</td>
               <td style={{ ...tdR, fontWeight: 800, color: PCT_INK, borderTop: `2px solid ${T.ink}` }}>{totalProj ? `${((totalRecv / totalProj) * 100).toFixed(0)}%` : "–"}</td>
             </tr>
