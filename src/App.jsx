@@ -3731,8 +3731,18 @@ function MFGCompanyPnL({ userEmail }) {
   const cosByMonth = FIN_MONTHS.map((_, i) =>
     wageRows.reduce((a, [k]) => a + (mval(wages[k], i + 1) || 0), 0));
   const gpByMonth = FIN_MONTHS.map((_, i) => revByMonth[i] - cosByMonth[i]);
+  // Car and Truck auto-compute: when the year doc carries IRS per-month
+  // rates (pnl.mileageRates), the row derives from the bottom Mileage row
+  // (miles x rate) instead of manual entry.
+  const mRates = pnl.mileageRates;
+  const autoCar = !!mRates && expRows.some(([k]) => k === "car-truck");
+  const carByMonth = FIN_MONTHS.map((_, i) => {
+    const mi = mval(pnl.mileage, i + 1), rt = mval(mRates, i + 1);
+    return mi != null && rt ? Math.round(mi * rt * 100) / 100 : null;
+  });
+  const expVal = (k, i) => (autoCar && k === "car-truck" ? carByMonth[i] : mval(exp[k], i + 1));
   const expByMonth = FIN_MONTHS.map((_, i) =>
-    expRows.reduce((a, [k]) => a + (mval(exp[k], i + 1) || 0), 0));
+    expRows.reduce((a, [k]) => a + (expVal(k, i) || 0), 0));
   const netByMonth = FIN_MONTHS.map((_, i) => gpByMonth[i] - expByMonth[i]);
   const tot = (arr) => arr.reduce((a, b) => a + b, 0);
 
@@ -3854,8 +3864,28 @@ function MFGCompanyPnL({ userEmail }) {
             <tr>
               <td colSpan={14} style={{ ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, color: MFG_RED, background: "#FDF3F2", borderTop: `2px solid ${T.ink}` }}>Expenses</td>
             </tr>
-            {expRows.map(([k, label], ri) =>
-              editRow(k, label, exp[k], (m, v) => ({ pnl: { expenses: { [k]: { [String(m)]: v } } } }), { zebra: ri % 2 === 1 }))}
+            {expRows.map(([k, label], ri) => {
+              if (autoCar && k === "car-truck") {
+                const zebra = ri % 2 === 1;
+                return (
+                  <tr key={k} style={{ background: zebra ? ZEBRA : "#fff" }}>
+                    <td style={{ ...tdName(zebra ? ZEBRA : "#fff"), fontWeight: 600, paddingLeft: 20 }}
+                      title="Computed from the Mileage row at the IRS rate">
+                      {label} <span style={{ fontSize: 10, fontWeight: 800, color: T.inkSoft }}>AUTO</span>
+                    </td>
+                    {FIN_MONTHS.map((_, i) => (
+                      <td key={i} style={tdR} title={mval(mRates, i + 1) ? `${mval(pnl.mileage, i + 1) ?? 0} mi × $${mval(mRates, i + 1)}` : undefined}>
+                        {carByMonth[i] != null ? <span style={{ color: T.coral }}>({finMoney(carByMonth[i])})</span> : "–"}
+                      </td>
+                    ))}
+                    <td style={{ ...tdR, fontWeight: 700, background: BAND_TOTAL, color: T.coral }}>
+                      {tot(carByMonth.map((v) => v || 0)) ? <>({finMoney(tot(carByMonth.map((v) => v || 0)))})</> : "–"}
+                    </td>
+                  </tr>
+                );
+              }
+              return editRow(k, label, exp[k], (m, v) => ({ pnl: { expenses: { [k]: { [String(m)]: v } } } }), { zebra: ri % 2 === 1 });
+            })}
             {bandRow("Total Expenses", expByMonth, { bg: RED_BG, ink: T.coral, paren: true })}
             {bandRow("Net Income", netByMonth, { bg: BAND_TOTAL, ink: (v) => (v < 0 ? T.coral : T.leaf), rule: true })}
             <tr><td colSpan={14} style={{ padding: 6, border: "none" }} /></tr>
