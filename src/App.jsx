@@ -3674,6 +3674,192 @@ function MFGRevenueTracking({ userEmail }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Company Overview — Profit and Loss Statement by month.             */
+/*  Revenue, cost of services and GP derive from the same              */
+/*  hub/mfg-finance-{year} doc as Revenue Tracking; expense rows,      */
+/*  mileage and SEP live in that doc under `pnl` and are team-edited.  */
+/* ------------------------------------------------------------------ */
+const PNL_EXPENSES = [
+  ["advertising", "Advertising"],
+  ["vendors", "Vendors"],
+  ["contract-labor", "Contract Labor"],
+  ["legal", "Legal and professional services"],
+  ["office-supplies", "Office & Supplies"],
+  ["travel", "Travel (24a)"],
+  ["meals", "Meals (24b - 50%)"],
+  ["software", "Software Subscriptions"],
+  ["memberships", "Memberships and Licenses"],
+  ["research", "Research, Training and Development"],
+  ["client-meals", "Client Meals & Gifts"],
+  ["computer", "Computer Equipment and Technology"],
+];
+
+function MFGCompanyPnL({ userEmail }) {
+  const years = finYears();
+  const [year, setYear] = useState(String(Math.min(new Date().getFullYear(), years[years.length - 1])));
+  const finDoc = useMfgHubDoc(`mfg-finance-${year}`);
+  const [editor, setEditor] = useState(null);   // {key, m} — expense key, "mileage" or "sep"
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const num = (v) => {
+    const n = parseFloat(String(v ?? "").replace(/[,$\s]/g, ""));
+    return isFinite(n) ? n : null;
+  };
+  const mval = (map, m) => (map && map[String(m)] != null ? map[String(m)] : null);
+
+  const clients = Object.values(finDoc?.clients || {});
+  const wages = finDoc?.wages || {};
+  const wageRows = Array.isArray(finDoc?.wageLabels) && finDoc.wageLabels.length
+    ? finDoc.wageLabels.map((w) => [w.k, w.label]) : FIN_EMPLOYEES;
+  const pnl = finDoc?.pnl || {};
+  const exp = pnl.expenses || {};
+
+  const revByMonth = FIN_MONTHS.map((_, i) =>
+    clients.reduce((a, c) => a + (mval(c.paid, i + 1) || 0), 0));
+  const cosByMonth = FIN_MONTHS.map((_, i) =>
+    wageRows.reduce((a, [k]) => a + (mval(wages[k], i + 1) || 0), 0));
+  const gpByMonth = FIN_MONTHS.map((_, i) => revByMonth[i] - cosByMonth[i]);
+  const expByMonth = FIN_MONTHS.map((_, i) =>
+    PNL_EXPENSES.reduce((a, [k]) => a + (mval(exp[k], i + 1) || 0), 0));
+  const netByMonth = FIN_MONTHS.map((_, i) => gpByMonth[i] - expByMonth[i]);
+  const tot = (arr) => arr.reduce((a, b) => a + b, 0);
+
+  const save = async (patch) => {
+    setSaving(true);
+    try {
+      await setDoc(doc(mfgDb, "hub", `mfg-finance-${year}`),
+        { ...patch, updatedBy: userEmail || "", updatedAt: Date.now() }, { merge: true });
+      setEditor(null);
+    } catch (e) {
+      alert(`Could not save (${e.code || e.message}).`);
+    }
+    setSaving(false);
+  };
+
+  // ---- shared styles (same family as Revenue Tracking)
+  const HEADER_BG = "#D9E9F6", ZEBRA = "#F5F7F9", BAND_TOTAL = "#E7EFF6";
+  const GREEN_BG = "#E3F0E9", RED_BG = "#FBE9E7", GOLD_BG = "#FBF3E2", GOLD_INK = "#9C721E";
+  const th = {
+    fontSize: 13, fontWeight: 800, color: "#10181F", background: HEADER_BG,
+    textTransform: "uppercase", letterSpacing: "0.04em", padding: "9px 10px",
+    textAlign: "right", whiteSpace: "nowrap", borderBottom: `2px solid ${T.ink}`,
+  };
+  const thName = { ...th, textAlign: "left", position: "sticky", left: 0, zIndex: 2, boxShadow: `2px 0 0 ${T.line}` };
+  const tdR = { fontSize: 13.5, color: T.ink, padding: "7px 10px", borderTop: `1px solid ${T.line}`, textAlign: "right", whiteSpace: "nowrap" };
+  const tdName = (bg, raised) => ({
+    ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, position: "sticky", left: 0,
+    background: bg || "#fff", zIndex: raised ? 60 : 2, boxShadow: `2px 0 0 ${T.line}`,
+    minWidth: 230, maxWidth: 300, whiteSpace: "normal",
+  });
+  const popover = (body) => (
+    <div style={{
+      position: "absolute", zIndex: 30, top: "100%", right: 0, background: "#fff",
+      border: `1px solid ${T.line}`, borderRadius: 12, padding: 12, boxShadow: "0 8px 24px rgba(0,49,87,.18)",
+      display: "flex", flexDirection: "column", gap: 8, minWidth: 210, textAlign: "left",
+    }}>{body}</div>
+  );
+
+  // One full-width styled band row (Revenue / CoS / GP / totals).
+  const bandRow = (label, vals, { bg, ink, paren, rule, money = true }) => (
+    <tr style={{ background: bg }}>
+      <td style={{ ...tdName(bg), color: typeof ink === "function" ? ink(tot(vals)) : ink, borderTop: rule ? `2px solid ${T.ink}` : tdR.borderTop }}>{label}</td>
+      {vals.map((v, i) => (
+        <td key={i} style={{ ...tdR, fontWeight: 800, color: typeof ink === "function" ? ink(v) : ink, borderTop: rule ? `2px solid ${T.ink}` : tdR.borderTop }}>
+          {paren && v ? <>({finMoney(Math.abs(v), "$0")})</> : finMoney(v, money ? "$0" : "–")}
+        </td>
+      ))}
+      <td style={{ ...tdR, fontWeight: 800, background: BAND_TOTAL, color: typeof ink === "function" ? ink(tot(vals)) : ink, borderTop: rule ? `2px solid ${T.ink}` : tdR.borderTop }}>
+        {paren && tot(vals) ? <>({finMoney(Math.abs(tot(vals)), "$0")})</> : finMoney(tot(vals), "$0")}
+      </td>
+    </tr>
+  );
+
+  // An editable monthly row stored under pnl.* (expenses, mileage, sep).
+  const editRow = (key, label, map, patchFor, { indent = 20, color = T.coral, paren = true, money = true, zebra } = {}) => (
+    <tr key={key} style={{ background: zebra ? ZEBRA : "#fff" }}>
+      <td style={{ ...tdName(zebra ? ZEBRA : "#fff", editor?.key === key), fontWeight: 600, paddingLeft: indent }}>{label}</td>
+      {FIN_MONTHS.map((_, i) => {
+        const m = i + 1, v = mval(map, m);
+        const isEd = editor?.key === key && editor.m === m;
+        return (
+          <td key={m} style={{ ...tdR, position: "relative", cursor: "pointer", zIndex: isEd ? 60 : undefined, background: isEd ? T.skySoft : undefined }}
+            onClick={() => !isEd && (setEditor({ key, m }), setDraft({ v: v ?? "" }))}>
+            {v != null
+              ? (paren ? <span style={{ color }}>({money ? finMoney(v) : Math.round(v).toLocaleString()})</span>
+                       : <span style={{ color }}>{money ? finMoney(v) : Math.round(v).toLocaleString()}</span>)
+              : "–"}
+            {isEd && popover(<>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: T.ink }}>{label} · {FIN_MONTHS[i]} {year}</div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, display: "flex", flexDirection: "column", gap: 3 }}>
+                {money ? "Amount ($)" : "Amount"}
+                <input autoFocus value={draft.v ?? ""} onChange={(e) => setDraft({ v: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Escape") setEditor(null); if (e.key === "Enter") save(patchFor(m, num(draft.v))); }}
+                  style={{ ...MFG_INPUT, fontWeight: 600 }} />
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button disabled={saving} onClick={() => save(patchFor(m, num(draft.v)))} style={MFG_CHIP(true)}>{saving ? "Saving…" : "Save"}</button>
+                <button onClick={() => setEditor(null)} style={MFG_CHIP(false)}>Cancel</button>
+              </div>
+            </>)}
+          </td>
+        );
+      })}
+      <td style={{ ...tdR, fontWeight: 700, background: BAND_TOTAL, color: mapTotal(map) ? color : T.ink }}>
+        {mapTotal(map)
+          ? (paren ? <>({money ? finMoney(mapTotal(map)) : Math.round(mapTotal(map)).toLocaleString()})</>
+                   : (money ? finMoney(mapTotal(map)) : Math.round(mapTotal(map)).toLocaleString()))
+          : "–"}
+      </td>
+    </tr>
+  );
+  const mapTotal = (map) => FIN_MONTHS.reduce((a, _, i) => a + (mval(map, i + 1) || 0), 0);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {years.map((y) => (
+          <button key={y} onClick={() => setYear(String(y))} style={MFG_CHIP(String(y) === year)}>{y}</button>
+        ))}
+      </div>
+
+      <div style={{ ...MFG_CARD, overflowX: "auto" }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color: MFG_RED, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Profit and Loss Statement</div>
+        <div style={{ fontSize: 11.5, color: T.inkSoft, fontStyle: "italic", margin: "2px 0 12px" }}>
+          Revenue, cost of services and gross profit flow from Revenue Tracking · click any expense, mileage or SEP cell to edit
+        </div>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1400 }}>
+          <thead>
+            <tr>
+              <th style={thName}>{year}</th>
+              {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
+              <th style={{ ...th, background: BAND_TOTAL }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bandRow("Total Revenue", revByMonth, { bg: GREEN_BG, ink: T.leaf })}
+            {bandRow("Cost of Services", cosByMonth, { bg: RED_BG, ink: T.coral, paren: true })}
+            {bandRow("Gross Profit", gpByMonth, { bg: GOLD_BG, ink: GOLD_INK })}
+            <tr>
+              <td colSpan={14} style={{ ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, color: MFG_RED, background: "#FDF3F2", borderTop: `2px solid ${T.ink}` }}>Expenses</td>
+            </tr>
+            {PNL_EXPENSES.map(([k, label], ri) =>
+              editRow(k, label, exp[k], (m, v) => ({ pnl: { expenses: { [k]: { [String(m)]: v } } } }), { zebra: ri % 2 === 1 }))}
+            {bandRow("Total Expenses", expByMonth, { bg: RED_BG, ink: T.coral, paren: true })}
+            {bandRow("Net Income", netByMonth, { bg: BAND_TOTAL, ink: (v) => (v < 0 ? T.coral : T.leaf), rule: true })}
+            <tr><td colSpan={14} style={{ padding: 6, border: "none" }} /></tr>
+            {editRow("mileage", "Mileage (miles)", pnl.mileage, (m, v) => ({ pnl: { mileage: { [String(m)]: v } } }),
+              { indent: 10, color: T.ink, paren: false, money: false })}
+            {editRow("sep", "SEP Contribution", pnl.sep, (m, v) => ({ pnl: { sep: { [String(m)]: v } } }),
+              { indent: 10, color: T.ink, paren: false })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function MFGPortal({ clientParam }) {
   const [user, setUser] = useState(undefined);
   const [roleInfo, setRoleInfo] = useState(undefined);
@@ -3747,7 +3933,7 @@ function MFGPortal({ clientParam }) {
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
       <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
-        <div style={{ maxWidth: tab === "revenue" ? 1520 : 1100, margin: "0 auto", padding: "16px 20px 0" }}>
+        <div style={{ maxWidth: tab === "customers" ? 1100 : 1520, margin: "0 auto", padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Briefcase size={20} color="#fff" />
@@ -3771,31 +3957,8 @@ function MFGPortal({ clientParam }) {
         </div>
       </div>
 
-      <div style={{ maxWidth: tab === "revenue" ? 1520 : 1100, margin: "0 auto", padding: "22px 20px 60px" }}>
-        {tab === "company" && (
-          <>
-            <div style={{
-              background: "#fff", border: `1px solid ${T.line}`, borderLeft: `5px solid ${MFG_RED}`,
-              borderRadius: 14, padding: "16px 18px", marginBottom: 14,
-            }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: MFG_RED, textTransform: "uppercase", letterSpacing: "0.06em" }}>North star</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginTop: 4, lineHeight: 1.5 }}>
-                Gross Profit $ and Gross Margin %, month over month — revenue on a received basis (billed in arrears), minus team salaries.
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-              <MfgKpiTile label="Revenue · this month" hint="received basis — Aug services land in Sep" />
-              <MfgKpiTile label="MRR · current month" hint="seasonality-aware" />
-              <MfgKpiTile label="Salaries" hint="Aida · Jaimee" />
-              <MfgKpiTile label="Gross Profit $" />
-              <MfgKpiTile label="Gross Margin %" hint="MoM trend" />
-              <MfgKpiTile label="Projected ARR" hint="Jan–Dec received income" />
-            </div>
-            <MfgShellNote>
-              Company engine (contracts → price per listing by volume → MRR → received-basis revenue → GP/GM) is the next build phase.
-            </MfgShellNote>
-          </>
-        )}
+      <div style={{ maxWidth: tab === "customers" ? 1100 : 1520, margin: "0 auto", padding: "22px 20px 60px" }}>
+        {tab === "company" && <MFGCompanyPnL userEmail={user.email} />}
         {tab === "revenue" && <MFGRevenueTracking userEmail={user.email} />}
         {tab === "customers" && <MFGCustomerList userEmail={user.email} />}
       </div>
