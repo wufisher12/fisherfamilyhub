@@ -2394,10 +2394,19 @@ function tableCellNumber(cell) {
 
 function MfgTableSection({ section }) {
   const columns = Array.isArray(section.columns) ? section.columns : [];
+  // Opt-in styling flags from the doc (contract v2.2). Defaults keep every
+  // existing dashboard's tables exactly as they were.
+  const dense = !!section.dense;          // tighter rows, slightly smaller type
+  const headerFill = !!section.headerFill; // Revenue-Tracking-style header band
+  const stickyFirst = !!section.stickyFirst; // first column pinned while scrolling
+  const sortable = section.sortable !== false; // grouped tables turn sorting off
+  const pad = dense ? "4px 9px" : "9px 10px";
+  const fs = dense ? 12.5 : 13.5;
+  const BAND = "#E7EFF6";
   // First click sorts high-to-low, second flips, third clears.
   const [sort, setSort] = useState(null);
   let rows = Array.isArray(section.rows) ? section.rows : [];
-  if (sort) {
+  if (sortable && sort) {
     const cellAt = (r, i) => (Array.isArray(r) ? r : r?.cells || [])[i];
     rows = [...rows].sort((ra, rb) => {
       const na = tableCellNumber(cellAt(ra, sort.col));
@@ -2408,8 +2417,12 @@ function MfgTableSection({ section }) {
       return (nb - na) * sort.dir;
     });
   }
-  const clickCol = (i) => setSort((s) =>
+  const clickCol = (i) => sortable && setSort((s) =>
     !s || s.col !== i ? { col: i, dir: 1 } : s.dir === 1 ? { col: i, dir: -1 } : null);
+  const stickyTd = (bg) => ({
+    position: "sticky", left: 0, zIndex: 2, background: bg || "#fff",
+    boxShadow: `2px 0 0 ${T.line}`, minWidth: 150,
+  });
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
       {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
@@ -2417,36 +2430,52 @@ function MfgTableSection({ section }) {
         <thead>
           <tr>
             {columns.map((c, i) => (
-              <th key={i} onClick={() => clickCol(i)} title="Sort"
+              <th key={i} onClick={() => clickCol(i)} title={sortable ? "Sort" : undefined}
                 style={{
-                  textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 800,
-                  color: sort?.col === i ? T.ink : T.inkSoft, cursor: "pointer", userSelect: "none",
-                  textTransform: "uppercase", letterSpacing: "0.05em", padding: "4px 10px 8px", whiteSpace: "nowrap",
-                }}>{c}{sort?.col === i ? (sort.dir === 1 ? " ▼" : " ▲") : ""}</th>
+                  textAlign: i === 0 ? "left" : "right",
+                  ...(headerFill
+                    ? { fontSize: dense ? 12 : 13, fontWeight: 800, color: "#10181F",
+                        background: "#D9E9F6", borderBottom: `2px solid ${T.ink}`,
+                        padding: dense ? "7px 9px" : "9px 10px" }
+                    : { fontSize: 10.5, fontWeight: 800,
+                        color: sort?.col === i ? T.ink : T.inkSoft,
+                        padding: "4px 10px 8px" }),
+                  cursor: sortable ? "pointer" : "default", userSelect: "none",
+                  textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap",
+                  ...(stickyFirst && i === 0 ? stickyTd(headerFill ? "#D9E9F6" : "#fff") : {}),
+                }}>{c}{sortable && sort?.col === i ? (sort.dir === 1 ? " ▼" : " ▲") : ""}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, ri) => (
-            <tr key={ri}>
+          {rows.map((r, ri) => {
+            // Row-level styling (contract v2.2): band highlights the row,
+            // rule draws a heavier top border to separate blocks.
+            const band = !Array.isArray(r) && r?.band === true;
+            const rule = !Array.isArray(r) && r?.rule === true;
+            const borderTop = rule ? `2px solid #B9C6D2` : `1px solid ${T.line}`;
+            return (
+            <tr key={ri} style={band ? { background: BAND } : undefined}>
               {/* Canonical row shape is {cells:[...]} (Firestore can't nest
                   arrays in arrays); plain arrays are accepted too. */}
               {(Array.isArray(r) ? r : Array.isArray(r?.cells) ? r.cells : []).map((cell, ci) => (
                 <td key={ci} style={{
-                  textAlign: ci === 0 ? "left" : "right", fontSize: 13.5, color: T.ink,
-                  fontWeight: ci === 0 ? 700 : 500, padding: "9px 10px", borderTop: `1px solid ${T.line}`,
+                  textAlign: ci === 0 ? "left" : "right", fontSize: fs, color: T.ink,
+                  fontWeight: ci === 0 || band ? 700 : 500, padding: pad, borderTop,
                   whiteSpace: ci === 0 ? "normal" : "nowrap",
+                  ...(stickyFirst && ci === 0 ? stickyTd(band ? BAND : "#fff") : {}),
                 }}>{cell && typeof cell === "object"
                   ? (cell.url
                     ? <a href={cell.url} target="_blank" rel="noreferrer" style={{ color: "#1F6FB2", fontWeight: 700, textDecoration: "none" }}>{cell.text}</a>
                     : <span style={{
-                        color: { pos: T.leaf, neg: T.coral, muted: T.inkSoft, gold: T.marigoldDeep }[cell.tone] || T.ink,
+                        color: { pos: T.leaf, neg: T.coral, muted: T.inkSoft, gold: T.marigoldDeep, strong: T.ink }[cell.tone] || T.ink,
                         fontWeight: cell.tone ? 700 : undefined,
                       }}>{cell.text}</span>)
                   : cell}</td>
               ))}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -3110,10 +3139,14 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
     ? new Date(dash.updated).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
     : null;
 
+  // Docs with `wide: true` stretch toward full screen (dense multi-column
+  // tables); everything else keeps the original 1100px column.
+  const maxW = dash?.wide ? 1760 : 1100;
+
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
       <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px 0" }}>
+        <div style={{ maxWidth: maxW, margin: "0 auto", padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Briefcase size={18} color="#fff" />
@@ -3142,7 +3175,7 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
           </div>
         </div>
       </div>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "18px 20px 60px" }}>
+      <div style={{ maxWidth: maxW, margin: "0 auto", padding: "18px 20px 60px" }}>
         {dash === undefined && (
           <div style={{ display: "flex", justifyContent: "center", padding: "60px 0", color: T.inkSoft }}>
             <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
