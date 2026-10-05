@@ -45,7 +45,10 @@ service cloud.firestore {
            || (isTeam() && docId == 'todolist'));
       allow write: if docId.matches('mfg-.*')
         ? (isTeam() || isClientFor(docId))
-        : (isFamily() || (isTeam() && docId == 'todolist'));
+        // Only Mike edits the To Do List from the portal; the rest of the
+        // team reads it. The family door is unchanged.
+        : (isFamily()
+           || (userEmail() == 'mike@fishergroup.co' && docId == 'todolist'));
     }
   }
 }

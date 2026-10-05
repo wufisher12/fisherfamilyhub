@@ -3177,13 +3177,16 @@ const PORTAL_TD = [
   { id: "personal", label: "Personal", abbr: "PERS", blue: true },
 ];
 
-function MFGCustomerList() {
+const TD_EDITOR = "mike@fishergroup.co"; // matches the firestore.rules carve-out
+
+function MFGCustomerList({ userEmail }) {
   const tdDoc = useMfgHubDoc("todolist");
   const [drafts, setDrafts] = useState({});
   const [busyId, setBusyId] = useState(null);
   const person = tdDoc?.mike || {};
   const items = person.items || [];
   const denied = tdDoc === null;
+  const canEdit = userEmail === TD_EDITOR;
 
   const persist = async (nextItems) => {
     await setDoc(doc(mfgDb, "hub", "todolist"),
@@ -3234,11 +3237,15 @@ function MFGCustomerList() {
                 {open.length === 0 && <div style={{ fontSize: 12, color: "#A9B2BB" }}>No open tasks</div>}
                 {open.map((it) => (
                   <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
-                    <button onClick={() => complete(it)} disabled={busyId === it.id} title="Mark done"
-                      style={{
-                        width: 16, height: 16, marginTop: 1, borderRadius: 5, flexShrink: 0, cursor: "pointer",
-                        border: `2px solid ${accent}`, background: "transparent", opacity: busyId === it.id ? 0.4 : 1,
-                      }} />
+                    {canEdit ? (
+                      <button onClick={() => complete(it)} disabled={busyId === it.id} title="Mark done"
+                        style={{
+                          width: 16, height: 16, marginTop: 1, borderRadius: 5, flexShrink: 0, cursor: "pointer",
+                          border: `2px solid ${accent}`, background: "transparent", opacity: busyId === it.id ? 0.4 : 1,
+                        }} />
+                    ) : (
+                      <span style={{ width: 6, height: 6, marginTop: 6, borderRadius: 999, flexShrink: 0, background: accent }} />
+                    )}
                     <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.35 }}>
                       {it.text}
                       {it.due && <span style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, marginLeft: 6 }}>→ {fmtDateKey(it.due)}</span>}
@@ -3246,12 +3253,14 @@ function MFGCustomerList() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
-                <input value={drafts[c.id] || ""} onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
-                  onKeyDown={(e) => e.key === "Enter" && addItem(c.id)} placeholder="Add a task…"
-                  style={{ ...MFG_INPUT, flex: 1, fontSize: 12.5, padding: "6px 10px" }} />
-                <button onClick={() => addItem(c.id)} style={{ ...MFG_CHIP(true), padding: "4px 11px" }}>+</button>
-              </div>
+              {canEdit && (
+                <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
+                  <input value={drafts[c.id] || ""} onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
+                    onKeyDown={(e) => e.key === "Enter" && addItem(c.id)} placeholder="Add a task…"
+                    style={{ ...MFG_INPUT, flex: 1, fontSize: 12.5, padding: "6px 10px" }} />
+                  <button onClick={() => addItem(c.id)} style={{ ...MFG_CHIP(true), padding: "4px 11px" }}>+</button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -3689,7 +3698,7 @@ function MFGPortal({ clientParam }) {
           </>
         )}
         {tab === "revenue" && <MFGRevenueTracking userEmail={user.email} />}
-        {tab === "customers" && <MFGCustomerList />}
+        {tab === "customers" && <MFGCustomerList userEmail={user.email} />}
       </div>
     </div>
   );
