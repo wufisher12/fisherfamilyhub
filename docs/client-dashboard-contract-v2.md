@@ -109,3 +109,19 @@ every client can differ. Look, colors, and typography are owned by the hub.
 Writer owns *what* (metrics, tabs, wording). Hub owns *how it looks*. Adding a KPI or a
 tab to a client is a writer-side change; adding a new section type is a hub-side change.
 Client logins (via the hub's roles) can read only their own document — already enforced.
+
+## v2.2 additions (2026-10-05, first user: Ohana)
+
+- Doc-level `wide: true` stretches the client screen from 1100px to 1760px for
+  dense multi-column tables. Omit for everything else.
+- `table` sections accept opt-in styling flags (defaults keep v2.1 rendering):
+  - `dense: true` — tighter row padding, 12.5px type.
+  - `headerFill: true` — Revenue-Tracking-style header: light blue band
+    (#D9E9F6), black uppercase type, 2px rule underneath.
+  - `stickyFirst: true` — first column stays pinned while the table scrolls
+    horizontally.
+  - `sortable: false` — disables click-to-sort (required for tables whose rows
+    are grouped blocks that must not be reordered).
+- Row maps may carry `band: true` (light blue row highlight, bold text) and
+  `rule: true` (2px top border separating blocks).
+- New cell tone `strong` — ink color, bold (for primary rows among muted ones).
