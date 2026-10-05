@@ -3680,19 +3680,25 @@ function MFGRevenueTracking({ userEmail }) {
 /*  hub/mfg-finance-{year} doc as Revenue Tracking; expense rows,      */
 /*  mileage and SEP live in that doc under `pnl` and are team-edited.  */
 /* ------------------------------------------------------------------ */
+// Default template (2026 onward), aligned to the filed Schedule C rows;
+// Mike 2026-10-05. Office Expense & Technology consolidates supplies,
+// computer equipment, printer ink, laptops, screens. A year doc can still
+// override with its own pnl.labels (2025 mirrors that year's filing).
 const PNL_EXPENSES = [
   ["advertising", "Advertising"],
+  ["car-truck", "Car and Truck (mileage)"],
   ["vendors", "Vendors"],
   ["contract-labor", "Contract Labor"],
-  ["legal", "Legal and professional services"],
-  ["office-supplies", "Office & Supplies"],
+  ["legal", "Legal and Professional Services"],
+  ["office", "Office Expense & Technology"],
   ["travel", "Travel (24a)"],
-  ["meals", "Meals (24b - 50%)"],
+  ["meals", "Deductible Meals (24b)"],
+  ["memberships", "Memberships and License Dues"],
+  ["phone", "Phone & Internet (less personal %)"],
   ["software", "Software Subscriptions"],
-  ["memberships", "Memberships and Licenses"],
+  ["client-gifts", "Client Gifts"],
   ["research", "Research, Training and Development"],
-  ["client-meals", "Client Meals & Gifts"],
-  ["computer", "Computer Equipment and Technology"],
+  ["home-office", "Business Use of Home (8829)"],
 ];
 
 function MFGCompanyPnL({ userEmail }) {
