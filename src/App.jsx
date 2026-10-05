@@ -3100,6 +3100,11 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
   const tabs = Array.isArray(dash?.tabs) ? dash.tabs.filter((t) => t && t.id && t.label) : [];
   const [tabId, setTabId] = useState(null);
   const activeTab = tabs.find((t) => t.id === tabId) || tabs[0] || null;
+  // A tab may nest subtabs instead of sections; selection is remembered per tab.
+  const [subFor, setSubFor] = useState({});
+  const subtabs = Array.isArray(activeTab?.subtabs) ? activeTab.subtabs.filter((s) => s && s.id && s.label) : null;
+  const activeSub = subtabs ? (subtabs.find((s) => s.id === subFor[activeTab.id]) || subtabs[0]) : null;
+  const sections = activeSub ? activeSub.sections : activeTab?.sections;
 
   const updatedText = typeof dash?.updated === "number"
     ? new Date(dash.updated).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
@@ -3156,8 +3161,19 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
                 <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>As of {updatedText}</span>
               )}
             </div>
-            {activeTab && activeTab.sections?.length > 0
-              ? activeTab.sections.map((s, i) => <MfgSection key={`${activeTab.id}-${i}`} section={s} userEmail={userEmail} isTeam={isTeam} />)
+            {subtabs && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                {subtabs.map((s) => (
+                  <button key={s.id}
+                    onClick={() => setSubFor((m) => ({ ...m, [activeTab.id]: s.id }))}
+                    style={MFG_CHIP(activeSub && s.id === activeSub.id)}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {sections?.length > 0
+              ? sections.map((s, i) => <MfgSection key={`${activeTab.id}-${activeSub ? activeSub.id : "x"}-${i}`} section={s} userEmail={userEmail} isTeam={isTeam} />)
               : <MfgComingSoon />}
           </>
         )}
