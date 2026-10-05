@@ -3313,15 +3313,15 @@ function MFGCustomerList({ userEmail }) {
               background: "#fff", border: `1px solid ${T.line}`, borderTop: `4px solid ${accent}`,
               borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8,
             }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: T.ink }}>{c.label}</div>
-                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: accent, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{c.abbr}</span>
-              </div>
-              {c.dash && (
+              {/* Clients with a dashboard: the name itself opens it. */}
+              {c.dash ? (
                 <button onClick={() => window.open(`${window.location.pathname}?portal=mfg&client=${c.id}`, "_blank")}
-                  style={{ border: "none", background: "transparent", color: accent, cursor: "pointer", fontSize: 12, fontWeight: 800, padding: 0, textAlign: "left", fontFamily: "Inter, sans-serif" }}>
-                  Open dashboard →
+                  title="Open dashboard"
+                  style={{ border: "none", background: "transparent", color: T.ink, cursor: "pointer", fontSize: 15, fontWeight: 800, padding: 0, textAlign: "left", fontFamily: "Inter, sans-serif" }}>
+                  {c.label}
                 </button>
+              ) : (
+                <div style={{ fontSize: 15, fontWeight: 800, color: T.ink }}>{c.label}</div>
               )}
               <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 5, minHeight: 20 }}>
                 {open.length === 0 && <div style={{ fontSize: 12, color: "#A9B2BB" }}>No open tasks</div>}
