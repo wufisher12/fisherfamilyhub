@@ -3241,9 +3241,11 @@ function MFGRevenueTracking({ userEmail }) {
   const tdR = { fontSize: 13.5, color: T.ink, padding: "9px 10px", borderTop: `1px solid ${T.line}`, textAlign: "right", whiteSpace: "nowrap" };
   const tdTotal = { ...tdR, fontWeight: 800, background: BAND_TOTAL };
   const tdProj = { ...tdR, color: PROJ_INK, fontWeight: 700, background: BAND_PROJ };
-  const tdName = (bg) => ({
+  // `raised` lifts the cell above later rows' sticky cells while its editor
+  // popover is open - without it the popover paints behind the next rows.
+  const tdName = (bg, raised) => ({
     ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, position: "sticky", left: 0,
-    background: bg || "#fff", zIndex: 2, boxShadow: `2px 0 0 ${T.line}`,
+    background: bg || "#fff", zIndex: raised ? 60 : 2, boxShadow: `2px 0 0 ${T.line}`,
     minWidth: 180, maxWidth: 240, whiteSpace: "normal",
   });
   const tile = (label, value, sub, color) => (
@@ -3297,7 +3299,7 @@ function MFGRevenueTracking({ userEmail }) {
       <MfgNoteSection section={{ text: "Billed in arrears, logged on the RECEIVED date: January services are invoiced Jan 31 and count as February revenue. Enter each month's invoice when it goes out, then the amount paid — matching amounts mean $0 accounts receivable." }} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
-        {tile("Received " + year, finMoney(totalRecv, "$0"))}
+        {tile("Received " + year, finMoney(totalRecv, "$0"), null, T.leaf)}
         {tile("Outstanding AR", finMoney(outstanding, "$0"), outstanding > 0 ? "invoiced, not yet paid" : "all invoices collected", outstanding > 0 ? T.coral : T.leaf)}
         {tile("% to Projection", totalProj ? `${((totalRecv / totalProj) * 100).toFixed(1)}%` : "–", totalProj ? `of ${finMoney(totalProj)} projected` : "set client projections")}
         {tile("Gross Profit " + year, finMoney(totalRecv - totalWages, "$0"), totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}% margin` : null)}
@@ -3341,9 +3343,10 @@ function MFGRevenueTracking({ userEmail }) {
             {clients.map((c, ri) => {
               const total = FIN_MONTHS.reduce((a, _, i) => a + (mval(c.paid, i + 1) || 0), 0);
               const rowBg = ri % 2 ? ZEBRA : "#fff";
+              const metaOpen = editor?.cid === c.cid && editor.field === "meta";
               return (
                 <tr key={c.cid} style={{ background: rowBg }}>
-                  <td style={tdName(rowBg)}>
+                  <td style={tdName(rowBg, metaOpen)}>
                     <button onClick={() => { setEditor({ cid: c.cid, field: "meta" }); setDraft({ label: c.label, proj: c.proj ?? "" }); }}
                       title="Edit name / projection"
                       style={{ border: "none", background: "transparent", color: T.ink, fontWeight: 800, cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter, sans-serif", fontSize: 14 }}>
@@ -3362,7 +3365,7 @@ function MFGRevenueTracking({ userEmail }) {
                     const open = (inv || 0) - (paid || 0);
                     const isEd = editor?.cid === c.cid && editor.m === m;
                     return (
-                      <td key={m} style={{ ...tdR, position: "relative", cursor: "pointer", background: isEd ? T.skySoft : open > 0 ? "#FDF3E7" : undefined }}
+                      <td key={m} style={{ ...tdR, position: "relative", cursor: "pointer", zIndex: isEd ? 60 : undefined, background: isEd ? T.skySoft : open > 0 ? "#FDF3E7" : undefined }}
                         onClick={() => !isEd && openCell(c.cid, m, c)}>
                         <span style={{ color: open > 0 ? T.marigoldDeep : T.ink, fontWeight: open > 0 ? 800 : 500 }}>
                           {inv == null && paid == null ? "–" : finMoney(paid, "$0")}
@@ -3405,11 +3408,18 @@ function MFGRevenueTracking({ userEmail }) {
         <div style={{ fontSize: 24, fontWeight: 800, color: MFG_RED, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Gross Profit</div>
         <div style={{ fontSize: 11.5, color: T.inkSoft, fontStyle: "italic", margin: "2px 0 12px" }}>Revenue minus cost of services · click a wage cell to edit</div>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1180 }}>
-          <thead><tr>
-            <th style={thName} />
-            {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
-            <th style={thTotal}>Total</th>
-          </tr></thead>
+          <thead>
+            <tr style={{ background: BAND_TOTAL }}>
+              <td style={{ ...tdName(BAND_TOTAL), color: T.leaf, borderTop: "none" }}>Gross Profit</td>
+              {gpByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, borderTop: "none", color: v < 0 ? T.coral : T.leaf }}>{finMoney(v, "$0")}</td>)}
+              <td style={{ ...tdTotal, borderTop: "none", color: totalRecv - totalWages < 0 ? T.coral : T.leaf }}>{finMoney(totalRecv - totalWages, "$0")}</td>
+            </tr>
+            <tr>
+              <th style={thName} />
+              {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
+              <th style={thTotal}>Total</th>
+            </tr>
+          </thead>
           <tbody>
             <tr>
               <td style={tdName()}>Total Revenue</td>
@@ -3423,7 +3433,7 @@ function MFGRevenueTracking({ userEmail }) {
                   const m = i + 1, v = mval(wages[k], m);
                   const isEd = editor?.emp === k && editor.m === m;
                   return (
-                    <td key={m} style={{ ...tdR, position: "relative", cursor: "pointer", background: isEd ? T.skySoft : undefined }}
+                    <td key={m} style={{ ...tdR, position: "relative", cursor: "pointer", zIndex: isEd ? 60 : undefined, background: isEd ? T.skySoft : undefined }}
                       onClick={() => !isEd && (setEditor({ emp: k, m }), setDraft({ w: v ?? "" }))}>
                       {v != null ? <span style={{ color: T.coral }}>({finMoney(v)})</span> : "–"}
                       {isEd && popover(<>
@@ -3442,19 +3452,14 @@ function MFGRevenueTracking({ userEmail }) {
               {wagesByMonth.map((v, i) => <td key={i} style={{ ...tdR, color: T.coral, fontWeight: 700 }}>({finMoney(v, "$0")})</td>)}
               <td style={{ ...tdTotal, color: T.coral }}>({finMoney(totalWages, "$0")})</td>
             </tr>
-            <tr style={{ background: BAND_TOTAL }}>
-              <td style={{ ...tdName(BAND_TOTAL), borderTop: `2px solid ${T.ink}` }}>Gross Profit</td>
-              {gpByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}`, color: v < 0 ? T.coral : T.ink }}>{finMoney(v, "$0")}</td>)}
-              <td style={{ ...tdTotal, borderTop: `2px solid ${T.ink}`, color: totalRecv - totalWages < 0 ? T.coral : T.ink }}>{finMoney(totalRecv - totalWages, "$0")}</td>
-            </tr>
             <tr>
-              <td style={{ ...tdName(), fontWeight: 700, color: PCT_INK }}>Gross Margin %</td>
+              <td style={{ ...tdName(), fontWeight: 700, color: PROJ_INK, borderTop: `2px solid ${T.ink}` }}>Gross Margin %</td>
               {gpByMonth.map((v, i) => (
-                <td key={i} style={{ ...tdR, fontWeight: 700, color: PCT_INK }}>
+                <td key={i} style={{ ...tdR, fontWeight: 700, color: PROJ_INK, borderTop: `2px solid ${T.ink}` }}>
                   {recvByMonth[i] ? `${((v / recvByMonth[i]) * 100).toFixed(0)}%` : "–"}
                 </td>
               ))}
-              <td style={{ ...tdTotal, color: PCT_INK }}>{totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}%` : "–"}</td>
+              <td style={{ ...tdTotal, color: PROJ_INK, borderTop: `2px solid ${T.ink}` }}>{totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}%` : "–"}</td>
             </tr>
           </tbody>
         </table>
