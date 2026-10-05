@@ -3367,11 +3367,12 @@ const FIN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep
 const FIN_EMPLOYEES = [["rachel", "Rachel"], ["aida", "Aida"], ["jaimee", "Jaimee"]];
 
 function finYears() {
-  // 2024 onward; the next year appears once it is 3 months away.
+  // 2025 onward (2024 dropped, Mike 2026-10-05); the next year appears once
+  // it is 3 months away.
   const now = new Date();
   const horizon = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
   const out = [];
-  for (let y = 2024; y <= horizon.getFullYear(); y++) out.push(y);
+  for (let y = 2025; y <= horizon.getFullYear(); y++) out.push(y);
   return out;
 }
 const finMoney = (v, dash = "–") =>
@@ -3416,8 +3417,14 @@ function MFGRevenueTracking({ userEmail }) {
   const totalRecv = recvByMonth.reduce((a, b) => a + b, 0);
   const totalProj = clients.reduce((a, c) => a + (c.proj || 0), 0);
   const outstanding = invByMonth.reduce((a, b) => a + b, 0) - totalRecv;
+  // Cost-of-services rows: the per-employee defaults, unless the year's doc
+  // names its own rows (e.g. 2025 only has aggregate Vendors + Contract
+  // Labor from the P&L, not a per-employee split).
+  const wageRows = Array.isArray(finDoc?.wageLabels) && finDoc.wageLabels.length
+    ? finDoc.wageLabels.map((w) => [w.k, w.label])
+    : FIN_EMPLOYEES;
   const wagesByMonth = FIN_MONTHS.map((_, i) =>
-    FIN_EMPLOYEES.reduce((a, [k]) => a + (mval(wages[k], i + 1) || 0), 0));
+    wageRows.reduce((a, [k]) => a + (mval(wages[k], i + 1) || 0), 0));
   const gpByMonth = FIN_MONTHS.map((_, i) => recvByMonth[i] - wagesByMonth[i]);
   const totalWages = wagesByMonth.reduce((a, b) => a + b, 0);
 
@@ -3623,7 +3630,7 @@ function MFGRevenueTracking({ userEmail }) {
               {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 700 }}>{finMoney(v, "$0")}</td>)}
               <td style={tdTotal}>{finMoney(totalRecv, "$0")}</td>
             </tr>
-            {FIN_EMPLOYEES.map(([k, name], ri) => (
+            {wageRows.map(([k, name], ri) => (
               <tr key={k} style={{ background: ri % 2 ? ZEBRA : "#fff" }}>
                 <td style={{ ...tdName(ri % 2 ? ZEBRA : "#fff"), fontWeight: 600, paddingLeft: 20 }}>{name}</td>
                 {FIN_MONTHS.map((_, i) => {
