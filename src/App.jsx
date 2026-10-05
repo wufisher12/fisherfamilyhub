@@ -2439,7 +2439,10 @@ function MfgTableSection({ section }) {
                 }}>{cell && typeof cell === "object"
                   ? (cell.url
                     ? <a href={cell.url} target="_blank" rel="noreferrer" style={{ color: "#1F6FB2", fontWeight: 700, textDecoration: "none" }}>{cell.text}</a>
-                    : cell.text)
+                    : <span style={{
+                        color: { pos: T.leaf, neg: T.coral, muted: T.inkSoft, gold: T.marigoldDeep }[cell.tone] || T.ink,
+                        fontWeight: cell.tone ? 700 : undefined,
+                      }}>{cell.text}</span>)
                   : cell}</td>
               ))}
             </tr>
