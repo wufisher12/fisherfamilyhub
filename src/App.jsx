@@ -3224,9 +3224,23 @@ function MFGRevenueTracking({ userEmail }) {
   const gpByMonth = FIN_MONTHS.map((_, i) => recvByMonth[i] - wagesByMonth[i]);
   const totalWages = wagesByMonth.reduce((a, b) => a + b, 0);
 
-  const th = { fontSize: 10, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 7px 8px", textAlign: "right", whiteSpace: "nowrap" };
-  const tdR = { fontSize: 12.5, color: T.ink, padding: "6px 7px", borderTop: `1px solid ${T.line}`, textAlign: "right", whiteSpace: "nowrap" };
-  const tdName = { ...tdR, textAlign: "left", fontWeight: 700, position: "sticky", left: 0, background: "#fff", minWidth: 150, maxWidth: 210, whiteSpace: "normal" };
+  // Distinct colors per column family so nothing blends: months in navy,
+  // Total banded sky, Projected banded gold, % in blue (green at goal).
+  const BAND_TOTAL = "#E7EFF6", BAND_PROJ = "#FBF3E2", ZEBRA = "#F5F7F9";
+  const PROJ_INK = "#9C721E", PCT_INK = "#1F6FB2";
+  const th = { fontSize: 11.5, fontWeight: 800, color: T.ink, textTransform: "uppercase", letterSpacing: "0.04em", padding: "6px 10px 10px", textAlign: "right", whiteSpace: "nowrap" };
+  const thName = { ...th, textAlign: "left", position: "sticky", left: 0, background: "#fff", zIndex: 2, boxShadow: `2px 0 0 ${T.line}` };
+  const thTotal = { ...th, background: BAND_TOTAL };
+  const thProj = { ...th, color: PROJ_INK, background: BAND_PROJ };
+  const thPct = { ...th, color: PCT_INK };
+  const tdR = { fontSize: 13.5, color: T.ink, padding: "9px 10px", borderTop: `1px solid ${T.line}`, textAlign: "right", whiteSpace: "nowrap" };
+  const tdTotal = { ...tdR, fontWeight: 800, background: BAND_TOTAL };
+  const tdProj = { ...tdR, color: PROJ_INK, fontWeight: 700, background: BAND_PROJ };
+  const tdName = (bg) => ({
+    ...tdR, textAlign: "left", fontWeight: 800, fontSize: 14, position: "sticky", left: 0,
+    background: bg || "#fff", zIndex: 2, boxShadow: `2px 0 0 ${T.line}`,
+    minWidth: 180, maxWidth: 240, whiteSpace: "normal",
+  });
   const tile = (label, value, sub, color) => (
     <div key={label} style={{ ...MFG_CARD, marginBottom: 0, padding: "12px 16px" }}>
       <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase" }}>{label}</div>
@@ -3301,21 +3315,22 @@ function MFGRevenueTracking({ userEmail }) {
 
       <div style={{ ...MFG_CARD, overflowX: "auto" }}>
         <MfgSectionTitle>Revenue by client — received basis · click a cell to log invoice & payment</MfgSectionTitle>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1340 }}>
           <thead><tr>
-            <th style={{ ...th, textAlign: "left", position: "sticky", left: 0, background: "#fff" }}>Client</th>
+            <th style={thName}>Client</th>
             {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
-            <th style={th}>Total</th><th style={th}>Projected</th><th style={th}>% to Proj</th>
+            <th style={thTotal}>Total</th><th style={thProj}>Projected</th><th style={thPct}>% to Proj</th>
           </tr></thead>
           <tbody>
-            {clients.map((c) => {
+            {clients.map((c, ri) => {
               const total = FIN_MONTHS.reduce((a, _, i) => a + (mval(c.paid, i + 1) || 0), 0);
+              const rowBg = ri % 2 ? ZEBRA : "#fff";
               return (
-                <tr key={c.cid}>
-                  <td style={tdName}>
+                <tr key={c.cid} style={{ background: rowBg }}>
+                  <td style={tdName(rowBg)}>
                     <button onClick={() => { setEditor({ cid: c.cid, field: "meta" }); setDraft({ label: c.label, proj: c.proj ?? "" }); }}
                       title="Edit name / projection"
-                      style={{ border: "none", background: "transparent", color: T.ink, fontWeight: 700, cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter, sans-serif", fontSize: 12.5 }}>
+                      style={{ border: "none", background: "transparent", color: T.ink, fontWeight: 800, cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter, sans-serif", fontSize: 14 }}>
                       {c.label}
                     </button>
                     {editor?.cid === c.cid && editor.field === "meta" && popover(<>
@@ -3348,29 +3363,30 @@ function MFGRevenueTracking({ userEmail }) {
                       </td>
                     );
                   })}
-                  <td style={{ ...tdR, fontWeight: 800 }}>{finMoney(total, "$0")}</td>
-                  <td style={tdR}>{finMoney(c.proj)}</td>
-                  <td style={{ ...tdR, fontWeight: 700, color: c.proj && total / c.proj >= 1 ? T.leaf : T.inkSoft }}>
+                  <td style={tdTotal}>{finMoney(total, "$0")}</td>
+                  <td style={tdProj}>{finMoney(c.proj)}</td>
+                  <td style={{ ...tdR, fontWeight: 800, color: c.proj && total / c.proj >= 1 ? T.leaf : PCT_INK }}>
                     {c.proj ? `${((total / c.proj) * 100).toFixed(0)}%` : "–"}
                   </td>
                 </tr>
               );
             })}
-            <tr>
-              <td style={{ ...tdName, borderTop: `2px solid ${T.ink}` }}>Total received</td>
+            <tr style={{ background: BAND_TOTAL }}>
+              <td style={{ ...tdName(BAND_TOTAL), borderTop: `2px solid ${T.ink}` }}>Total received</td>
               {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{finMoney(v, "$0")}</td>)}
-              <td style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv, "$0")}</td>
-              <td style={{ ...tdR, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalProj)}</td>
-              <td style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{totalProj ? `${((totalRecv / totalProj) * 100).toFixed(0)}%` : "–"}</td>
+              <td style={{ ...tdTotal, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv, "$0")}</td>
+              <td style={{ ...tdProj, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalProj)}</td>
+              <td style={{ ...tdR, fontWeight: 800, color: PCT_INK, borderTop: `2px solid ${T.ink}` }}>{totalProj ? `${((totalRecv / totalProj) * 100).toFixed(0)}%` : "–"}</td>
             </tr>
             <tr>
-              <td style={{ ...tdName, color: T.inkSoft, fontWeight: 700 }}>Outstanding AR</td>
+              <td style={{ ...tdName(), fontWeight: 700 }}>Outstanding AR</td>
               {FIN_MONTHS.map((_, i) => {
                 const o = invByMonth[i] - recvByMonth[i];
-                return <td key={i} style={{ ...tdR, color: o > 0 ? T.coral : T.inkSoft, fontWeight: o > 0 ? 800 : 500 }}>{o ? finMoney(o) : "–"}</td>;
+                return <td key={i} style={{ ...tdR, color: o > 0 ? T.coral : "#9AA6B2", fontWeight: o > 0 ? 800 : 500 }}>{o ? finMoney(o) : "–"}</td>;
               })}
-              <td style={{ ...tdR, color: outstanding > 0 ? T.coral : T.leaf, fontWeight: 800 }}>{finMoney(outstanding, "$0")}</td>
-              <td style={tdR} colSpan={2} />
+              <td style={{ ...tdTotal, color: outstanding > 0 ? T.coral : T.leaf }}>{finMoney(outstanding, "$0")}</td>
+              <td style={{ ...tdProj }} />
+              <td style={tdR} />
             </tr>
           </tbody>
         </table>
@@ -3378,21 +3394,21 @@ function MFGRevenueTracking({ userEmail }) {
 
       <div style={{ ...MFG_CARD, overflowX: "auto" }}>
         <MfgSectionTitle>Gross Profit — revenue minus cost of services · click a wage cell to edit</MfgSectionTitle>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1180 }}>
           <thead><tr>
-            <th style={{ ...th, textAlign: "left", position: "sticky", left: 0, background: "#fff" }} />
+            <th style={thName} />
             {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
-            <th style={th}>Total</th>
+            <th style={thTotal}>Total</th>
           </tr></thead>
           <tbody>
             <tr>
-              <td style={tdName}>Total Revenue</td>
+              <td style={tdName()}>Total Revenue</td>
               {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 700 }}>{finMoney(v, "$0")}</td>)}
-              <td style={{ ...tdR, fontWeight: 800 }}>{finMoney(totalRecv, "$0")}</td>
+              <td style={tdTotal}>{finMoney(totalRecv, "$0")}</td>
             </tr>
-            {FIN_EMPLOYEES.map(([k, name]) => (
-              <tr key={k}>
-                <td style={{ ...tdName, fontWeight: 500, color: T.inkSoft, paddingLeft: 18 }}>{name}</td>
+            {FIN_EMPLOYEES.map(([k, name], ri) => (
+              <tr key={k} style={{ background: ri % 2 ? ZEBRA : "#fff" }}>
+                <td style={{ ...tdName(ri % 2 ? ZEBRA : "#fff"), fontWeight: 600, paddingLeft: 20 }}>{name}</td>
                 {FIN_MONTHS.map((_, i) => {
                   const m = i + 1, v = mval(wages[k], m);
                   const isEd = editor?.emp === k && editor.m === m;
@@ -3408,27 +3424,27 @@ function MFGRevenueTracking({ userEmail }) {
                     </td>
                   );
                 })}
-                <td style={{ ...tdR, color: T.coral }}>({finMoney(FIN_MONTHS.reduce((a, _, i) => a + (mval(wages[k], i + 1) || 0), 0), "$0")})</td>
+                <td style={{ ...tdTotal, color: T.coral }}>({finMoney(FIN_MONTHS.reduce((a, _, i) => a + (mval(wages[k], i + 1) || 0), 0), "$0")})</td>
               </tr>
             ))}
             <tr>
-              <td style={{ ...tdName, color: T.inkSoft }}>Total Cost of Services</td>
+              <td style={{ ...tdName(), fontWeight: 700 }}>Total Cost of Services</td>
               {wagesByMonth.map((v, i) => <td key={i} style={{ ...tdR, color: T.coral, fontWeight: 700 }}>({finMoney(v, "$0")})</td>)}
-              <td style={{ ...tdR, color: T.coral, fontWeight: 800 }}>({finMoney(totalWages, "$0")})</td>
+              <td style={{ ...tdTotal, color: T.coral }}>({finMoney(totalWages, "$0")})</td>
             </tr>
-            <tr>
-              <td style={{ ...tdName, borderTop: `2px solid ${T.ink}` }}>Gross Profit</td>
+            <tr style={{ background: BAND_TOTAL }}>
+              <td style={{ ...tdName(BAND_TOTAL), borderTop: `2px solid ${T.ink}` }}>Gross Profit</td>
               {gpByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}`, color: v < 0 ? T.coral : T.ink }}>{finMoney(v, "$0")}</td>)}
-              <td style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv - totalWages, "$0")}</td>
+              <td style={{ ...tdTotal, borderTop: `2px solid ${T.ink}`, color: totalRecv - totalWages < 0 ? T.coral : T.ink }}>{finMoney(totalRecv - totalWages, "$0")}</td>
             </tr>
             <tr>
-              <td style={{ ...tdName, color: T.inkSoft, fontWeight: 700 }}>Gross Margin %</td>
+              <td style={{ ...tdName(), fontWeight: 700, color: PCT_INK }}>Gross Margin %</td>
               {gpByMonth.map((v, i) => (
-                <td key={i} style={{ ...tdR, fontWeight: 700, color: T.inkSoft }}>
+                <td key={i} style={{ ...tdR, fontWeight: 700, color: PCT_INK }}>
                   {recvByMonth[i] ? `${((v / recvByMonth[i]) * 100).toFixed(0)}%` : "–"}
                 </td>
               ))}
-              <td style={{ ...tdR, fontWeight: 800 }}>{totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}%` : "–"}</td>
+              <td style={{ ...tdTotal, color: PCT_INK }}>{totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}%` : "–"}</td>
             </tr>
           </tbody>
         </table>
@@ -3510,7 +3526,7 @@ function MFGPortal({ clientParam }) {
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
       <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px 0" }}>
+        <div style={{ maxWidth: tab === "revenue" ? 1520 : 1100, margin: "0 auto", padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Briefcase size={20} color="#fff" />
@@ -3534,7 +3550,7 @@ function MFGPortal({ clientParam }) {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "22px 20px 60px" }}>
+      <div style={{ maxWidth: tab === "revenue" ? 1520 : 1100, margin: "0 auto", padding: "22px 20px 60px" }}>
         {tab === "company" && (
           <>
             <div style={{
