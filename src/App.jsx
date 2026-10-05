@@ -3162,11 +3162,289 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Revenue Tracking — received-basis revenue log + AR + Gross Profit  */
+/*  Team-only. Data lives in hub/mfg-finance-{year}, edited in place.  */
+/* ------------------------------------------------------------------ */
+const FIN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const FIN_EMPLOYEES = [["rachel", "Rachel"], ["aida", "Aida"], ["jaimee", "Jaimee"]];
+
+function finYears() {
+  // 2024 onward; the next year appears once it is 3 months away.
+  const now = new Date();
+  const horizon = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+  const out = [];
+  for (let y = 2024; y <= horizon.getFullYear(); y++) out.push(y);
+  return out;
+}
+const finMoney = (v, dash = "–") =>
+  v == null || v === 0 ? dash : `$${Math.round(v).toLocaleString()}`;
+
+function MFGRevenueTracking({ userEmail }) {
+  const years = finYears();
+  const [year, setYear] = useState(String(Math.min(new Date().getFullYear(), years[years.length - 1])));
+  const finDoc = useMfgHubDoc(`mfg-finance-${year}`);
+  const [editor, setEditor] = useState(null);   // {cid, m} | {cid, field:"meta"} | {emp, m} | {add:true}
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const clients = Object.entries(finDoc?.clients || {})
+    .map(([cid, c]) => ({ cid, ...c }))
+    .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || (a.label || "").localeCompare(b.label || ""));
+  const wages = finDoc?.wages || {};
+
+  const save = async (patch) => {
+    setSaving(true);
+    try {
+      await setDoc(doc(mfgDb, "hub", `mfg-finance-${year}`),
+        { ...patch, updatedBy: userEmail || "", updatedAt: Date.now() }, { merge: true });
+      setEditor(null);
+    } catch (e) {
+      alert(`Could not save (${e.code || e.message}).`);
+    }
+    setSaving(false);
+  };
+
+  const num = (v) => {
+    const n = parseFloat(String(v ?? "").replace(/[,$\s]/g, ""));
+    return isFinite(n) ? n : null;
+  };
+  const mval = (map, m) => (map && map[String(m)] != null ? map[String(m)] : null);
+
+  // ---- aggregates
+  const recvByMonth = FIN_MONTHS.map((_, i) =>
+    clients.reduce((a, c) => a + (mval(c.paid, i + 1) || 0), 0));
+  const invByMonth = FIN_MONTHS.map((_, i) =>
+    clients.reduce((a, c) => a + (mval(c.inv, i + 1) || 0), 0));
+  const totalRecv = recvByMonth.reduce((a, b) => a + b, 0);
+  const totalProj = clients.reduce((a, c) => a + (c.proj || 0), 0);
+  const outstanding = invByMonth.reduce((a, b) => a + b, 0) - totalRecv;
+  const wagesByMonth = FIN_MONTHS.map((_, i) =>
+    FIN_EMPLOYEES.reduce((a, [k]) => a + (mval(wages[k], i + 1) || 0), 0));
+  const gpByMonth = FIN_MONTHS.map((_, i) => recvByMonth[i] - wagesByMonth[i]);
+  const totalWages = wagesByMonth.reduce((a, b) => a + b, 0);
+
+  const th = { fontSize: 10, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 7px 8px", textAlign: "right", whiteSpace: "nowrap" };
+  const tdR = { fontSize: 12.5, color: T.ink, padding: "6px 7px", borderTop: `1px solid ${T.line}`, textAlign: "right", whiteSpace: "nowrap" };
+  const tdName = { ...tdR, textAlign: "left", fontWeight: 700, position: "sticky", left: 0, background: "#fff", minWidth: 150, maxWidth: 210, whiteSpace: "normal" };
+  const tile = (label, value, sub, color) => (
+    <div key={label} style={{ ...MFG_CARD, marginBottom: 0, padding: "12px 16px" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: color || T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: T.inkSoft }}>{sub}</div>}
+    </div>
+  );
+
+  const popover = (body) => (
+    <div style={{
+      position: "absolute", zIndex: 30, top: "100%", right: 0, background: "#fff",
+      border: `1px solid ${T.line}`, borderRadius: 12, padding: 12, boxShadow: "0 8px 24px rgba(0,49,87,.18)",
+      display: "flex", flexDirection: "column", gap: 8, minWidth: 210, textAlign: "left",
+    }}>{body}</div>
+  );
+  const field = (label, key, auto) => (
+    <label style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, display: "flex", flexDirection: "column", gap: 3 }}>
+      {label}
+      <input autoFocus={auto} value={draft[key] ?? ""} onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+        onKeyDown={(e) => e.key === "Escape" && setEditor(null)}
+        style={{ ...MFG_INPUT, fontWeight: 600 }} />
+    </label>
+  );
+  const popButtons = (onSave, onRemove) => (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <button disabled={saving} onClick={onSave} style={MFG_CHIP(true)}>{saving ? "Saving…" : "Save"}</button>
+      <button onClick={() => setEditor(null)} style={MFG_CHIP(false)}>Cancel</button>
+      {onRemove && <button onClick={onRemove} title="Remove this row"
+        style={{ border: "none", background: "transparent", color: T.coral, cursor: "pointer", fontSize: 11.5, fontWeight: 800, marginLeft: "auto", fontFamily: "Inter, sans-serif" }}>Remove</button>}
+    </div>
+  );
+
+  const openCell = (cid, m, c) => {
+    setEditor({ cid, m });
+    setDraft({ inv: mval(c.inv, m) ?? "", paid: mval(c.paid, m) ?? "" });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {years.map((y) => (
+            <button key={y} onClick={() => setYear(String(y))} style={MFG_CHIP(String(y) === year)}>{y}</button>
+          ))}
+        </div>
+        <button onClick={() => { setEditor({ add: true }); setDraft({ label: "", proj: "" }); }} style={MFG_CHIP(true)}>+ Add client</button>
+      </div>
+
+      <MfgNoteSection section={{ text: "Billed in arrears, logged on the RECEIVED date: January services are invoiced Jan 31 and count as February revenue. Enter each month's invoice when it goes out, then the amount paid — matching amounts mean $0 accounts receivable." }} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
+        {tile("Received " + year, finMoney(totalRecv, "$0"))}
+        {tile("Outstanding AR", finMoney(outstanding, "$0"), outstanding > 0 ? "invoiced, not yet paid" : "all invoices collected", outstanding > 0 ? T.coral : T.leaf)}
+        {tile("% to Projection", totalProj ? `${((totalRecv / totalProj) * 100).toFixed(1)}%` : "–", totalProj ? `of ${finMoney(totalProj)} projected` : "set client projections")}
+        {tile("Gross Profit " + year, finMoney(totalRecv - totalWages, "$0"), totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}% margin` : null)}
+      </div>
+
+      {editor?.add && (
+        <div style={{ ...MFG_CARD, position: "relative" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            {field("Client name", "label", true)}
+            {field("Projected ARR ($)", "proj")}
+            {popButtons(() => {
+              const label = (draft.label || "").trim();
+              if (!label) return;
+              const cid = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "client";
+              save({ clients: { [cid]: { label, proj: num(draft.proj), order: clients.length + 1 } } });
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ ...MFG_CARD, overflowX: "auto" }}>
+        <MfgSectionTitle>Revenue by client — received basis · click a cell to log invoice & payment</MfgSectionTitle>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead><tr>
+            <th style={{ ...th, textAlign: "left", position: "sticky", left: 0, background: "#fff" }}>Client</th>
+            {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
+            <th style={th}>Total</th><th style={th}>Projected</th><th style={th}>% to Proj</th>
+          </tr></thead>
+          <tbody>
+            {clients.map((c) => {
+              const total = FIN_MONTHS.reduce((a, _, i) => a + (mval(c.paid, i + 1) || 0), 0);
+              return (
+                <tr key={c.cid}>
+                  <td style={tdName}>
+                    <button onClick={() => { setEditor({ cid: c.cid, field: "meta" }); setDraft({ label: c.label, proj: c.proj ?? "" }); }}
+                      title="Edit name / projection"
+                      style={{ border: "none", background: "transparent", color: T.ink, fontWeight: 700, cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "Inter, sans-serif", fontSize: 12.5 }}>
+                      {c.label}
+                    </button>
+                    {editor?.cid === c.cid && editor.field === "meta" && popover(<>
+                      {field("Client name", "label", true)}
+                      {field("Projected ARR ($)", "proj")}
+                      {popButtons(
+                        () => save({ clients: { [c.cid]: { label: (draft.label || c.label).trim(), proj: num(draft.proj) } } }),
+                        () => { if (window.confirm(`Remove ${c.label} and its ${year} entries?`)) save({ clients: { [c.cid]: null } }); })}
+                    </>)}
+                  </td>
+                  {FIN_MONTHS.map((_, i) => {
+                    const m = i + 1, inv = mval(c.inv, m), paid = mval(c.paid, m);
+                    const open = (inv || 0) - (paid || 0);
+                    const isEd = editor?.cid === c.cid && editor.m === m;
+                    return (
+                      <td key={m} style={{ ...tdR, position: "relative", cursor: "pointer", background: isEd ? T.skySoft : open > 0 ? "#FDF3E7" : undefined }}
+                        onClick={() => !isEd && openCell(c.cid, m, c)}>
+                        <span style={{ color: open > 0 ? T.marigoldDeep : T.ink, fontWeight: open > 0 ? 800 : 500 }}>
+                          {inv == null && paid == null ? "–" : finMoney(paid, "$0")}
+                        </span>
+                        {open > 0 && <div style={{ fontSize: 9.5, color: T.coral, fontWeight: 800 }}>{finMoney(open)} due</div>}
+                        {isEd && popover(<>
+                          <div style={{ fontSize: 11.5, fontWeight: 800, color: T.ink }}>{c.label} · {FIN_MONTHS[i]} {year}</div>
+                          {field("Invoiced ($)", "inv", true)}
+                          {field("Paid ($)", "paid")}
+                          <button onClick={() => setDraft((d) => ({ ...d, paid: d.inv }))}
+                            style={{ ...MFG_CHIP(false), alignSelf: "flex-start" }}>Mark paid in full</button>
+                          {popButtons(() => save({ clients: { [c.cid]: { inv: { [String(m)]: num(draft.inv) }, paid: { [String(m)]: num(draft.paid) } } } }))}
+                        </>)}
+                      </td>
+                    );
+                  })}
+                  <td style={{ ...tdR, fontWeight: 800 }}>{finMoney(total, "$0")}</td>
+                  <td style={tdR}>{finMoney(c.proj)}</td>
+                  <td style={{ ...tdR, fontWeight: 700, color: c.proj && total / c.proj >= 1 ? T.leaf : T.inkSoft }}>
+                    {c.proj ? `${((total / c.proj) * 100).toFixed(0)}%` : "–"}
+                  </td>
+                </tr>
+              );
+            })}
+            <tr>
+              <td style={{ ...tdName, borderTop: `2px solid ${T.ink}` }}>Total received</td>
+              {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{finMoney(v, "$0")}</td>)}
+              <td style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv, "$0")}</td>
+              <td style={{ ...tdR, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalProj)}</td>
+              <td style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{totalProj ? `${((totalRecv / totalProj) * 100).toFixed(0)}%` : "–"}</td>
+            </tr>
+            <tr>
+              <td style={{ ...tdName, color: T.inkSoft, fontWeight: 700 }}>Outstanding AR</td>
+              {FIN_MONTHS.map((_, i) => {
+                const o = invByMonth[i] - recvByMonth[i];
+                return <td key={i} style={{ ...tdR, color: o > 0 ? T.coral : T.inkSoft, fontWeight: o > 0 ? 800 : 500 }}>{o ? finMoney(o) : "–"}</td>;
+              })}
+              <td style={{ ...tdR, color: outstanding > 0 ? T.coral : T.leaf, fontWeight: 800 }}>{finMoney(outstanding, "$0")}</td>
+              <td style={tdR} colSpan={2} />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ ...MFG_CARD, overflowX: "auto" }}>
+        <MfgSectionTitle>Gross Profit — revenue minus cost of services · click a wage cell to edit</MfgSectionTitle>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead><tr>
+            <th style={{ ...th, textAlign: "left", position: "sticky", left: 0, background: "#fff" }} />
+            {FIN_MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}
+            <th style={th}>Total</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style={tdName}>Total Revenue</td>
+              {recvByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 700 }}>{finMoney(v, "$0")}</td>)}
+              <td style={{ ...tdR, fontWeight: 800 }}>{finMoney(totalRecv, "$0")}</td>
+            </tr>
+            {FIN_EMPLOYEES.map(([k, name]) => (
+              <tr key={k}>
+                <td style={{ ...tdName, fontWeight: 500, color: T.inkSoft, paddingLeft: 18 }}>{name}</td>
+                {FIN_MONTHS.map((_, i) => {
+                  const m = i + 1, v = mval(wages[k], m);
+                  const isEd = editor?.emp === k && editor.m === m;
+                  return (
+                    <td key={m} style={{ ...tdR, position: "relative", cursor: "pointer", background: isEd ? T.skySoft : undefined }}
+                      onClick={() => !isEd && (setEditor({ emp: k, m }), setDraft({ w: v ?? "" }))}>
+                      {v != null ? <span style={{ color: T.coral }}>({finMoney(v)})</span> : "–"}
+                      {isEd && popover(<>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: T.ink }}>{name} · {FIN_MONTHS[i]} {year}</div>
+                        {field("Wages ($)", "w", true)}
+                        {popButtons(() => save({ wages: { [k]: { [String(m)]: num(draft.w) } } }))}
+                      </>)}
+                    </td>
+                  );
+                })}
+                <td style={{ ...tdR, color: T.coral }}>({finMoney(FIN_MONTHS.reduce((a, _, i) => a + (mval(wages[k], i + 1) || 0), 0), "$0")})</td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ ...tdName, color: T.inkSoft }}>Total Cost of Services</td>
+              {wagesByMonth.map((v, i) => <td key={i} style={{ ...tdR, color: T.coral, fontWeight: 700 }}>({finMoney(v, "$0")})</td>)}
+              <td style={{ ...tdR, color: T.coral, fontWeight: 800 }}>({finMoney(totalWages, "$0")})</td>
+            </tr>
+            <tr>
+              <td style={{ ...tdName, borderTop: `2px solid ${T.ink}` }}>Gross Profit</td>
+              {gpByMonth.map((v, i) => <td key={i} style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}`, color: v < 0 ? T.coral : T.ink }}>{finMoney(v, "$0")}</td>)}
+              <td style={{ ...tdR, fontWeight: 800, borderTop: `2px solid ${T.ink}` }}>{finMoney(totalRecv - totalWages, "$0")}</td>
+            </tr>
+            <tr>
+              <td style={{ ...tdName, color: T.inkSoft, fontWeight: 700 }}>Gross Margin %</td>
+              {gpByMonth.map((v, i) => (
+                <td key={i} style={{ ...tdR, fontWeight: 700, color: T.inkSoft }}>
+                  {recvByMonth[i] ? `${((v / recvByMonth[i]) * 100).toFixed(0)}%` : "–"}
+                </td>
+              ))}
+              <td style={{ ...tdR, fontWeight: 800 }}>{totalRecv ? `${(((totalRecv - totalWages) / totalRecv) * 100).toFixed(1)}%` : "–"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function MFGPortal({ clientParam }) {
   const [user, setUser] = useState(undefined);
   const [roleInfo, setRoleInfo] = useState(undefined);
   const [err, setErr] = useState(null);
   const [tab, setTab] = useState("company");
+
+  // The portal is the business product - it gets its own browser-tab name.
+  useEffect(() => { document.title = "Mike Fisher Group"; }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(mfgAuth, (u) => { setUser(u || null); setRoleInfo(undefined); setErr(null); });
@@ -3225,7 +3503,7 @@ function MFGPortal({ clientParam }) {
 
   const tabs = [
     { id: "company", label: "Company Overview" },
-    { id: "portfolio", label: "Portfolio Overview" },
+    { id: "revenue", label: "Revenue Tracking" },
     { id: "customers", label: "Customer Dashboards" },
   ];
 
@@ -3281,21 +3559,7 @@ function MFGPortal({ clientParam }) {
             </MfgShellNote>
           </>
         )}
-        {tab === "portfolio" && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-              <MfgKpiTile label="Portfolio Revenue · 2026 YoY" hint="all clients, aggregated" />
-              <MfgKpiTile label="Adjusted RevPAR · YoY" />
-              <MfgKpiTile label="WoW Rent Revenue Pickup" />
-              <MfgKpiTile label="Next 60 Days Pacing" hint="APO vs LY · vs market" />
-              <MfgKpiTile label="Active Listings" hint="across portfolio" />
-              <MfgKpiTile label="Clients" hint={`${MFG_CLIENTS.length} active`} />
-            </div>
-            <MfgShellNote>
-              The aggregated story — the numbers for LinkedIn and sales calls — computes from every client's data once the engine is live.
-            </MfgShellNote>
-          </>
-        )}
+        {tab === "revenue" && <MFGRevenueTracking userEmail={user.email} />}
         {tab === "customers" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
             {MFG_CLIENTS.map((c) => (
