@@ -2397,12 +2397,14 @@ function MfgTableSection({ section }) {
   // Opt-in styling flags from the doc (contract v2.2). Defaults keep every
   // existing dashboard's tables exactly as they were.
   const dense = !!section.dense;          // tighter rows, slightly smaller type
-  const headerFill = !!section.headerFill; // Revenue-Tracking-style header band
+  const headerFill = section.headerFill;  // true = light blue band, "gold" = light gold
   const stickyFirst = !!section.stickyFirst; // first column pinned while scrolling
   const sortable = section.sortable !== false; // grouped tables turn sorting off
-  const pad = dense ? "4px 9px" : "9px 10px";
+  const nowrapFirst = !!section.nowrapFirst; // keep first-column labels on one line
+  const pad = dense ? "3px 8px" : "9px 10px";
   const fs = dense ? 12.5 : 13.5;
   const BAND = "#E7EFF6";
+  const headerBg = headerFill === "gold" ? "#F3E5C0" : "#D9E9F6";
   // First click sorts high-to-low, second flips, third clears.
   const [sort, setSort] = useState(null);
   let rows = Array.isArray(section.rows) ? section.rows : [];
@@ -2434,15 +2436,15 @@ function MfgTableSection({ section }) {
                 style={{
                   textAlign: i === 0 ? "left" : "right",
                   ...(headerFill
-                    ? { fontSize: dense ? 12 : 13, fontWeight: 800, color: "#10181F",
-                        background: "#D9E9F6", borderBottom: `2px solid ${T.ink}`,
-                        padding: dense ? "7px 9px" : "9px 10px" }
+                    ? { fontSize: 13, fontWeight: 800, color: "#10181F",
+                        background: headerBg, borderBottom: `2px solid ${T.ink}`,
+                        padding: dense ? "7px 8px" : "9px 10px" }
                     : { fontSize: 10.5, fontWeight: 800,
                         color: sort?.col === i ? T.ink : T.inkSoft,
                         padding: "4px 10px 8px" }),
                   cursor: sortable ? "pointer" : "default", userSelect: "none",
                   textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap",
-                  ...(stickyFirst && i === 0 ? stickyTd(headerFill ? "#D9E9F6" : "#fff") : {}),
+                  ...(stickyFirst && i === 0 ? stickyTd(headerFill ? headerBg : "#fff") : {}),
                 }}>{c}{sortable && sort?.col === i ? (sort.dir === 1 ? " ▼" : " ▲") : ""}</th>
             ))}
           </tr>
@@ -2450,9 +2452,11 @@ function MfgTableSection({ section }) {
         <tbody>
           {rows.map((r, ri) => {
             // Row-level styling (contract v2.2): band highlights the row,
-            // rule draws a heavier top border to separate blocks.
+            // rule draws a heavier top border to separate blocks, sub renders
+            // the row smaller and italic (comparison lines under a main row).
             const band = !Array.isArray(r) && r?.band === true;
             const rule = !Array.isArray(r) && r?.rule === true;
+            const sub = !Array.isArray(r) && r?.sub === true;
             const borderTop = rule ? `2px solid #B9C6D2` : `1px solid ${T.line}`;
             return (
             <tr key={ri} style={band ? { background: BAND } : undefined}>
@@ -2460,9 +2464,10 @@ function MfgTableSection({ section }) {
                   arrays in arrays); plain arrays are accepted too. */}
               {(Array.isArray(r) ? r : Array.isArray(r?.cells) ? r.cells : []).map((cell, ci) => (
                 <td key={ci} style={{
-                  textAlign: ci === 0 ? "left" : "right", fontSize: fs, color: T.ink,
+                  textAlign: ci === 0 ? "left" : "right", fontSize: sub ? fs - 1.5 : fs, color: T.ink,
                   fontWeight: ci === 0 || band ? 700 : 500, padding: pad, borderTop,
-                  whiteSpace: ci === 0 ? "normal" : "nowrap",
+                  fontStyle: sub ? "italic" : undefined,
+                  whiteSpace: ci === 0 ? (nowrapFirst ? "nowrap" : "normal") : "nowrap",
                   ...(stickyFirst && ci === 0 ? stickyTd(band ? BAND : "#fff") : {}),
                 }}>{cell && typeof cell === "object"
                   ? (cell.url
