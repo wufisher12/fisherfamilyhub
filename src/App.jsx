@@ -3491,7 +3491,7 @@ function MFGRevenueTracking({ userEmail }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+      <div className="mfg-noprint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 6 }}>
           {years.map((y) => (
             <button key={y} onClick={() => setYear(String(y))} style={MFG_CHIP(String(y) === year)}>{y}</button>
@@ -3499,8 +3499,14 @@ function MFGRevenueTracking({ userEmail }) {
         </div>
         <button onClick={() => { setEditor({ add: true }); setDraft({ label: "", proj: "" }); }} style={MFG_CHIP(true)}>+ Add client</button>
       </div>
+      <div className="mfg-print-title" style={{ display: "none", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, borderBottom: `3px solid ${T.ink}`, paddingBottom: 8 }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Mike Fisher Group · Revenue Tracking {year}</span>
+        <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>Received basis · Prepared {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+      </div>
 
-      <MfgNoteSection section={{ text: "Billed in arrears, logged on the RECEIVED date: January services are invoiced Jan 31 and count as February revenue. Enter each month's invoice when it goes out, then the amount paid — matching amounts mean $0 accounts receivable." }} />
+      <div className="mfg-noprint">
+        <MfgNoteSection section={{ text: "Billed in arrears, logged on the RECEIVED date: January services are invoiced Jan 31 and count as February revenue. Enter each month's invoice when it goes out, then the amount paid — matching amounts mean $0 accounts receivable." }} />
+      </div>
 
       {/* Five tiles on one line (Mike, 2026-10-05): GP green, margin gold. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -3526,7 +3532,7 @@ function MFGRevenueTracking({ userEmail }) {
         </div>
       )}
 
-      <div style={{ ...MFG_CARD, overflowX: "auto" }}>
+      <div className="mfg-table-card" style={{ ...MFG_CARD, overflowX: "auto" }}>
         <div style={{ fontSize: 24, fontWeight: 800, color: MFG_RED, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Revenue</div>
         <div style={{ fontSize: 11.5, color: T.inkSoft, fontStyle: "italic", margin: "2px 0 12px" }}>Received basis, logged by payment date · click a cell to log invoice & payment</div>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1340 }}>
@@ -3610,7 +3616,7 @@ function MFGRevenueTracking({ userEmail }) {
         </table>
       </div>
 
-      <div style={{ ...MFG_CARD, overflowX: "auto" }}>
+      <div className="mfg-table-card" style={{ ...MFG_CARD, overflowX: "auto" }}>
         <div style={{ fontSize: 24, fontWeight: 800, color: MFG_RED, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Gross Profit</div>
         <div style={{ fontSize: 11.5, color: T.inkSoft, fontStyle: "italic", margin: "2px 0 12px" }}>Revenue minus cost of services · click a wage cell to edit</div>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1180 }}>
@@ -3872,13 +3878,17 @@ function MFGCompanyPnL({ userEmail }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+      <div className="mfg-noprint" style={{ display: "flex", gap: 6, marginBottom: 12 }}>
         {years.map((y) => (
           <button key={y} onClick={() => setYear(String(y))} style={MFG_CHIP(String(y) === year)}>{y}</button>
         ))}
       </div>
+      <div className="mfg-print-title" style={{ display: "none", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, borderBottom: `3px solid ${T.ink}`, paddingBottom: 8 }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Mike Fisher Group · Profit and Loss Statement {year}</span>
+        <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>Prepared {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+      </div>
 
-      <div style={{ ...MFG_CARD, overflowX: "auto" }}>
+      <div className="mfg-table-card" style={{ ...MFG_CARD, overflowX: "auto" }}>
         <div style={{ fontSize: 24, fontWeight: 800, color: MFG_RED, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Profit and Loss Statement</div>
         <div style={{ fontSize: 11.5, color: T.inkSoft, fontStyle: "italic", margin: "2px 0 12px" }}>
           Revenue, cost of services and gross profit flow from Revenue Tracking · click any expense, mileage or SEP cell to edit
@@ -3998,6 +4008,25 @@ function MFGPortal({ clientParam }) {
   // The portal is the business product - it gets its own browser-tab name.
   useEffect(() => { document.title = "Mike Fisher Group"; }, []);
 
+  // Print styles for the Export PDF buttons (Company Overview and Revenue
+  // Tracking): landscape Letter, nav and controls hidden, content scaled.
+  // Same stylesheet the client screens inject; the id guard keeps it single.
+  useEffect(() => {
+    if (document.getElementById("mfg-print-css")) return;
+    const style = document.createElement("style");
+    style.id = "mfg-print-css";
+    style.textContent = `@media print {
+      @page { size: letter landscape; margin: 9mm; }
+      body { background: #fff !important; }
+      .mfg-noprint { display: none !important; }
+      .mfg-print-area { zoom: 0.6; }
+      .mfg-print-area * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .mfg-print-area .mfg-table-card { overflow: visible !important; border: none !important; }
+      .mfg-print-title { display: flex !important; }
+    }`;
+    document.head.appendChild(style);
+  }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(mfgAuth, (u) => { setUser(u || null); setRoleInfo(undefined); setErr(null); });
     return unsub;
@@ -4061,7 +4090,7 @@ function MFGPortal({ clientParam }) {
 
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
-      <div style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
+      <div className="mfg-noprint" style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
         <div style={{ maxWidth: tab === "customers" ? 1100 : 1520, margin: "0 auto", padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -4086,7 +4115,12 @@ function MFGPortal({ clientParam }) {
         </div>
       </div>
 
-      <div style={{ maxWidth: tab === "customers" ? 1100 : 1520, margin: "0 auto", padding: "22px 20px 60px" }}>
+      <div className="mfg-print-area" style={{ maxWidth: tab === "customers" ? 1100 : 1520, margin: "0 auto", padding: "22px 20px 60px" }}>
+        {tab !== "customers" && (
+          <div className="mfg-noprint" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button onClick={() => window.print()} style={MFG_CHIP(true)}>Export PDF</button>
+          </div>
+        )}
         {tab === "company" && <MFGCompanyPnL userEmail={user.email} />}
         {tab === "revenue" && <MFGRevenueTracking userEmail={user.email} />}
         {tab === "customers" && <MFGCustomerList userEmail={user.email} />}
