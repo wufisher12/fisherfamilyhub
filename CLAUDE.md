@@ -68,12 +68,26 @@ Inter. Goldfish motif is family-only.
 - Repo secrets (names only): MAIL_USERNAME, MAIL_PASSWORD, MAIL_TO,
   FIREBASE_SERVICE_ACCOUNT, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN.
 
-## Current roadmap (Sept 2026)
+## Portal state (Oct 2026)
 
-1. **NOW**: generic client-dashboard renderer in the portal, driven by
-   `hub/mfg-client-{clientId}` documents per contract v2 (writers own *what*, hub owns
-   *how it looks*; section types: `tiles`, `chart`, `table`, `note`). Bear Camp first.
-2. Company Overview engine (received-basis revenue → Gross Profit/Margin MoM).
+- Team tabs: **Company Overview** (shell) · **Revenue Tracking** (live team-edited
+  `hub/mfg-finance-{year}` docs: received-basis revenue by client/month, AR
+  invoiced-vs-paid, projections, Gross Profit with per-employee wages; Mike's
+  template sheet seeded 2026) · **Customer List** (dashboard cards merged with
+  the shared `hub/todolist` — team reads, ONLY mike@fishergroup.co writes).
+- Client dashboards render contract v2/v2.1 sections (`tiles` `chart` `table`
+  `note` `listingTable` `kpiExplorer` `benchmark` `compsetList` `reservations`);
+  Bear Camp is fully built (writer: bearcamp-revenue repo, nightly). `demo` is a
+  static anonymized Bear Camp mirror for prospects. Listing notes live in
+  `hub/mfg-client-{id}-notes`; reservations in `-res-{period}` shard docs.
+- Client logins exist (Jessie Kasztelan → bearcamp). Browser tab title in the
+  portal is "Mike Fisher Group".
+
+## Roadmap
+
+1. Company Overview engine (received-basis revenue → Gross Profit/Margin MoM —
+   Revenue Tracking now holds the data).
+2. More client dashboard writers (Bear Camp is the reference implementation).
 3. Financials Phase 1 (family, Monarch CSV).
 4. Deferred: SMS, Plaid, in-app AI brief, in-portal access manager, streak display.
 
