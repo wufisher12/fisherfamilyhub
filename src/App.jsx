@@ -2344,7 +2344,7 @@ function MfgChartSection({ section, seriesStyles, compact }) {
               );
             });
           })}
-          {isLine && visible.map(({ s, i: si }) => {
+          {isLine && visible.map(({ s, i: si }, vi) => {
             const pts = s.values
               .map((v, i) => (typeof v === "number" && isFinite(v) ? `${padL + gw * (i + 0.5)},${y(v)}` : null))
               .filter(Boolean).join(" ");
@@ -2356,6 +2356,17 @@ function MfgChartSection({ section, seriesStyles, compact }) {
                   typeof v === "number" && isFinite(v) ? (
                     <circle key={i} cx={padL + gw * (i + 0.5)} cy={y(v)} r={hover === i ? 4 : 2.8}
                       fill="#fff" stroke={colorOf(si)} strokeWidth={2} />
+                  ) : null,
+                )}
+                {/* pointLabels (v2.3): value above each marker; series after
+                    the first label below, so close lines do not collide. */}
+                {section.pointLabels && s.values.map((v, i) =>
+                  typeof v === "number" && isFinite(v) ? (
+                    <text key={`l${i}`} x={padL + gw * (i + 0.5)} y={y(v) + (vi % 2 === 0 ? -7 : 14)}
+                      textAnchor="middle" fontSize={8.5} fontWeight={700}
+                      fill={colorOf(si)} fontFamily="Inter, sans-serif">
+                      {fmtAxisValue(v, section.format)}
+                    </text>
                   ) : null,
                 )}
               </g>
@@ -3162,6 +3173,7 @@ function MfgMonthlyCompareSection({ section }) {
   const [basis, setBasis] = useState("stly");
   const [m0, setM0] = useState(1);
   const [m1, setM1] = useState(12);
+  const [chartKpi, setChartKpi] = useState("rent"); // rent | adr | occ
 
   const pickCy = (y) => { setCy(y); setComp(y - 1); };
   const yd = (y) => years[String(y)] || {};
@@ -3213,10 +3225,20 @@ function MfgMonthlyCompareSection({ section }) {
     { label: "Owner Nights", value: A.owner.toLocaleString(), delta: "", dir: "flat", hint: `${comp} final: ${agg(compF, compF).owner.toLocaleString()}` },
   ];
 
-  const chartSeries = [{ name: String(cy), values: range.map((m) => Math.round(val(curF, "rent", m))) }];
-  if (compCut) chartSeries.push({ name: `${comp} STLY`, values: range.map((m) => Math.round(val(compCut, "rent", m))) });
+  // Chart KPI: rent, ADR or paid occupancy, same three series each way.
+  const kpiVal = (d, availFrom, m) => {
+    if (chartKpi === "rent") return Math.round(val(d, "rent", m));
+    const p = val(d, "paid", m);
+    if (chartKpi === "adr") return p ? Math.round(val(d, "rent", m) / p) : null;
+    const av = val(availFrom, "avail", m);
+    return av ? Math.round((p / av) * 1000) / 10 : null;
+  };
+  const chartFormat = chartKpi === "occ" ? "percent" : "currency";
+  const chartKpiLabel = { rent: "rent", adr: "ADR", occ: "paid occupancy" }[chartKpi];
+  const chartSeries = [{ name: String(cy), values: range.map((m) => kpiVal(curF, curF, m)) }];
+  if (compCut) chartSeries.push({ name: `${comp} STLY`, values: range.map((m) => kpiVal(compCut, compF, m)) });
   // Final starts hidden (legend click reveals it); apples-to-apples first.
-  chartSeries.push({ name: `${comp} final`, values: range.map((m) => Math.round(val(compF, "rent", m))), hidden: true });
+  chartSeries.push({ name: `${comp} final`, values: range.map((m) => kpiVal(compF, compF, m)), hidden: true });
 
   // One group of columns per KPI: this year, LY final/current, STLY, and the
   // difference vs the selected basis.
@@ -3298,7 +3320,13 @@ function MfgMonthlyCompareSection({ section }) {
         <button onClick={() => { setM0(1); setM1(12); }} style={MFG_CHIP(fullYear)}>Full Year</button>
       </div>
       <MfgTilesSection section={{ title: `${cy} vs ${compLab}${fullYear ? "" : ` · ${MC_MONTHS[m0 - 1]}-${MC_MONTHS[m1 - 1]}`}`, titleStyle: "heading", items: tiles }} />
-      <MfgChartSection key={`${cy}|${comp}`} section={{ kind: "line", title: `Monthly rent (* = on the books at ${section.asOf}; click the legend to show ${comp} final)`, xLabels: range.map((m) => MC_MONTHS[m - 1]), series: chartSeries, format: "currency" }} />
+      <div className="mfg-noprint" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <span style={lbl}>Chart</span>
+        <button onClick={() => setChartKpi("rent")} style={MFG_CHIP(chartKpi === "rent")}>Rent</button>
+        <button onClick={() => setChartKpi("adr")} style={MFG_CHIP(chartKpi === "adr")}>ADR</button>
+        <button onClick={() => setChartKpi("occ")} style={MFG_CHIP(chartKpi === "occ")}>Occupancy</button>
+      </div>
+      <MfgChartSection key={`${cy}|${comp}|${chartKpi}`} section={{ kind: "line", title: `Monthly ${chartKpiLabel} (* = on the books at ${section.asOf}; click the legend to show ${comp} final)`, xLabels: range.map((m) => MC_MONTHS[m - 1]), series: chartSeries, format: chartFormat, pointLabels: true }} />
       <MfgTableSection section={{ columns: tblColumns, groups: tblGroups, rows, dense: true, headerFill: "gold", stickyFirst: true, sortable: false, nowrapFirst: true, firstColWidth: 70 }} />
     </div>
   );
