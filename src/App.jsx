@@ -3236,6 +3236,10 @@ function MfgMonthlyCompareSection({ section }) {
   const chartFormat = chartKpi === "occ" ? "percent" : "currency";
   const chartKpiLabel = { rent: "rent", adr: "ADR", occ: "paid occupancy" }[chartKpi];
   const chartSeries = [{ name: String(cy), values: range.map((m) => kpiVal(curF, curF, m)) }];
+  // 14-day Pickup: the view year's position 14 days ago (hidden by default);
+  // the gap to the current line is the last two weeks of pickup.
+  const cur14 = yd(cy).cut14d;
+  if (cur14) chartSeries.push({ name: "14-day Pickup", values: range.map((m) => kpiVal(cur14, curF, m)), hidden: true });
   if (compCut) chartSeries.push({ name: `${comp} STLY`, values: range.map((m) => kpiVal(compCut, compF, m)) });
   // Final starts hidden (legend click reveals it); apples-to-apples first.
   chartSeries.push({ name: `${comp} final`, values: range.map((m) => kpiVal(compF, compF, m)), hidden: true });
