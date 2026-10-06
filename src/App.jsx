@@ -2401,10 +2401,20 @@ function MfgTableSection({ section }) {
   const stickyFirst = !!section.stickyFirst; // first column pinned while scrolling
   const sortable = section.sortable !== false; // grouped tables turn sorting off
   const nowrapFirst = !!section.nowrapFirst; // keep first-column labels on one line
+  // Grouped header row (v2.3): [{label, span}] spans centered over their
+  // sub-columns, with a separator rule at each group boundary.
+  const groups = Array.isArray(section.groups) ? section.groups : null;
+  const groupStarts = new Set();
+  if (groups) {
+    let acc = 0;
+    groups.forEach((g) => { if (acc > 0) groupStarts.add(acc); acc += g.span || 1; });
+  }
+  const groupBorder = (i) => (groupStarts.has(i) ? { borderLeft: `2px solid ${T.line}` } : {});
   const pad = dense ? "3px 8px" : "9px 10px";
   const fs = dense ? 12.5 : 13.5;
   const BAND = "#E7EFF6";
   const headerBg = headerFill === "gold" ? "#F3E5C0" : "#D9E9F6";
+  const firstW = section.firstColWidth || 150;
   // First click sorts high-to-low, second flips, third clears.
   const [sort, setSort] = useState(null);
   let rows = Array.isArray(section.rows) ? section.rows : [];
@@ -2423,13 +2433,29 @@ function MfgTableSection({ section }) {
     !s || s.col !== i ? { col: i, dir: 1 } : s.dir === 1 ? { col: i, dir: -1 } : null);
   const stickyTd = (bg) => ({
     position: "sticky", left: 0, zIndex: 2, background: bg || "#fff",
-    boxShadow: `2px 0 0 ${T.line}`, minWidth: 150,
+    boxShadow: `2px 0 0 ${T.line}`, minWidth: firstW,
   });
   return (
     <div className="mfg-table-card" style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
       {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
+          {groups && (
+            <tr>
+              {groups.map((g, gi) => {
+                const start = groups.slice(0, gi).reduce((a, x) => a + (x.span || 1), 0);
+                return (
+                  <th key={gi} colSpan={g.span || 1} style={{
+                    textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#10181F",
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    background: headerFill ? headerBg : "#fff", padding: "7px 6px",
+                    ...(groupStarts.has(start) ? { borderLeft: `2px solid ${T.line}` } : {}),
+                    ...(stickyFirst && gi === 0 ? stickyTd(headerFill ? headerBg : "#fff") : {}),
+                  }}>{g.label}</th>
+                );
+              })}
+            </tr>
+          )}
           <tr>
             {columns.map((c, i) => (
               <th key={i} onClick={() => clickCol(i)} title={sortable ? "Sort" : undefined}
@@ -2444,6 +2470,7 @@ function MfgTableSection({ section }) {
                         padding: "4px 10px 8px" }),
                   cursor: sortable ? "pointer" : "default", userSelect: "none",
                   textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap",
+                  ...groupBorder(i),
                   ...(stickyFirst && i === 0 ? stickyTd(headerFill ? headerBg : "#fff") : {}),
                 }}>{c}{sortable && sort?.col === i ? (sort.dir === 1 ? " ▼" : " ▲") : ""}</th>
             ))}
@@ -2468,6 +2495,7 @@ function MfgTableSection({ section }) {
                   fontWeight: ci === 0 || band ? 700 : 500, padding: pad, borderTop,
                   fontStyle: sub ? "italic" : undefined,
                   whiteSpace: ci === 0 ? (nowrapFirst ? "nowrap" : "normal") : "nowrap",
+                  ...groupBorder(ci),
                   ...(stickyFirst && ci === 0 ? stickyTd(band ? BAND : "#fff") : {}),
                 }}>{cell && typeof cell === "object"
                   ? (cell.url
@@ -3181,29 +3209,60 @@ function MfgMonthlyCompareSection({ section }) {
   if (compCut) chartSeries.push({ name: `${comp} STLY`, values: range.map((m) => Math.round(val(compCut, "rent", m))) });
   chartSeries.push({ name: `${comp} final`, values: range.map((m) => Math.round(val(compF, "rent", m))) });
 
+  // One group of columns per KPI: this year, LY final/current, STLY, and the
+  // difference vs the selected basis.
+  const stlyAt = (key, m) => (compCut ? val(compCut, key, m) : null);
+  const diffBase = (fin, stly) => (useStly && stly != null ? stly : fin);
+  const ownCell = (c, p) => {
+    const d = c - p;
+    return { text: d === 0 ? "0" : `${d > 0 ? "+" : ""}${d}`, tone: "muted" };
+  };
   const rows = range.map((m) => {
     const r = val(curF, "rent", m), p = val(curF, "paid", m), av = val(curF, "avail", m);
-    const br = val(compSel, "rent", m), bp = val(compSel, "paid", m), bav = val(compF, "avail", m);
-    const adr = p ? r / p : null, badr = bp ? br / bp : null;
-    const occ = av ? p / av : null, bocc = bav ? bp / bav : null;
+    const fr = val(compF, "rent", m), fp = val(compF, "paid", m), fav = val(compF, "avail", m);
+    const sr = stlyAt("rent", m), sp = stlyAt("paid", m);
+    const adr = p ? r / p : null, fadr = fp ? fr / fp : null, sadr = sp ? (sr || 0) / sp : null;
+    const occ = av ? p / av : null, focc = fav ? fp / fav : null, socc = fav && sp != null ? sp / fav : null;
+    const own = val(curF, "owner", m), fown = val(compF, "owner", m);
     return { cells: [
       MC_MONTHS[m - 1] + (otb(m) ? " *" : ""),
-      { text: mk(r), tone: "strong" },
-      { text: mk(br), tone: "muted" },
-      pctCellMc(r, br),
+      { text: mk(r), tone: "strong" }, { text: mk(fr), tone: "muted" },
+      { text: sr != null ? mk(sr) : "—", tone: "muted" }, pctCellMc(r, diffBase(fr, sr)),
       { text: adr ? `$${Math.round(adr)}` : "—", tone: "strong" },
-      pctCellMc(adr || 0, badr || 0),
-      { text: occ != null ? `${Math.round(occ * 100)}%` : "—" },
-      ptsCellMc(occ, bocc),
-      { text: String(val(curF, "owner", m) || "—"), tone: "muted" },
+      { text: fadr ? `$${Math.round(fadr)}` : "—", tone: "muted" },
+      { text: sadr ? `$${Math.round(sadr)}` : "—", tone: "muted" },
+      pctCellMc(adr || 0, diffBase(fadr, sadr) || 0),
+      { text: occ != null ? `${Math.round(occ * 100)}%` : "—", tone: "strong" },
+      { text: focc != null ? `${Math.round(focc * 100)}%` : "—", tone: "muted" },
+      { text: socc != null ? `${Math.round(socc * 100)}%` : "—", tone: "muted" },
+      ptsCellMc(occ, diffBase(focc, socc)),
+      { text: own ? String(own) : "—", tone: "strong" },
+      { text: fown ? String(fown) : "—", tone: "muted" },
+      ownCell(own, fown),
     ] };
   });
+  const BF = agg(compF, compF);
   rows.push({ cells: [
-    "Total", { text: mk(A.rent), tone: "strong" }, { text: mk(B.rent), tone: "muted" },
-    pctCellMc(A.rent, B.rent), { text: A.adr ? `$${Math.round(A.adr)}` : "—", tone: "strong" },
-    pctCellMc(A.adr || 0, B.adr || 0), { text: A.occ != null ? `${(A.occ * 100).toFixed(1)}%` : "—" },
-    ptsCellMc(A.occ, B.occ), { text: String(A.owner) },
+    "Total",
+    { text: mk(A.rent), tone: "strong" }, { text: mk(BF.rent), tone: "muted" },
+    { text: compCut ? mk(agg(compCut, compF).rent) : "—", tone: "muted" }, pctCellMc(A.rent, B.rent),
+    { text: A.adr ? `$${Math.round(A.adr)}` : "—", tone: "strong" },
+    { text: BF.adr ? `$${Math.round(BF.adr)}` : "—", tone: "muted" },
+    { text: compCut && agg(compCut, compF).adr ? `$${Math.round(agg(compCut, compF).adr)}` : "—", tone: "muted" },
+    pctCellMc(A.adr || 0, B.adr || 0),
+    { text: A.occ != null ? `${(A.occ * 100).toFixed(1)}%` : "—", tone: "strong" },
+    { text: BF.occ != null ? `${(BF.occ * 100).toFixed(1)}%` : "—", tone: "muted" },
+    { text: compCut && agg(compCut, compF).occ != null ? `${(agg(compCut, compF).occ * 100).toFixed(1)}%` : "—", tone: "muted" },
+    ptsCellMc(A.occ, B.occ),
+    { text: String(A.owner), tone: "strong" }, { text: String(BF.owner), tone: "muted" },
+    ownCell(A.owner, BF.owner),
   ], band: true, rule: true });
+  const dLab = useStly ? "Δ STLY" : "Δ LY";
+  const subCols = [String(cy), String(comp), "STLY", dLab];
+  const tblColumns = ["Month", ...subCols, ...subCols, ...subCols, String(cy), String(comp), "Δ"];
+  const tblGroups = [{ label: "", span: 1 }, { label: "Rent", span: 4 },
+                     { label: "ADR", span: 4 }, { label: "Paid Occupancy", span: 4 },
+                     { label: "Owner Nights", span: 3 }];
 
   const sel = { fontFamily: "Inter, sans-serif", fontSize: 12.5, fontWeight: 700, padding: "6px 8px", borderRadius: 8, border: `1px solid ${T.line}`, color: T.ink, background: "#fff" };
   const lbl = { fontSize: 11, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", marginRight: 4 };
@@ -3231,7 +3290,57 @@ function MfgMonthlyCompareSection({ section }) {
       </div>
       <MfgTilesSection section={{ title: `${cy} vs ${compLab}${fullYear ? "" : ` · ${MC_MONTHS[m0 - 1]}-${MC_MONTHS[m1 - 1]}`}`, titleStyle: "heading", items: tiles }} />
       <MfgChartSection section={{ kind: "line", title: `Monthly rent (* = on the books at ${section.asOf})`, xLabels: range.map((m) => MC_MONTHS[m - 1]), series: chartSeries, format: "currency" }} />
-      <MfgTableSection section={{ columns: ["Month", "Rent", compLab, "vs " + (useStly ? "STLY" : "final"), "ADR", "ADR vs", "Paid Occ", "Occ vs", "Owner Nts"], rows, dense: true, headerFill: "gold", stickyFirst: true, sortable: false, nowrapFirst: true }} />
+      <MfgTableSection section={{ columns: tblColumns, groups: tblGroups, rows, dense: true, headerFill: "gold", stickyFirst: true, sortable: false, nowrapFirst: true, firstColWidth: 70 }} />
+    </div>
+  );
+}
+
+/* checklist (contract v2.3): actionable rows with a persistent done-state.
+   Checking a row strikes it through and writes done.{id} to the stateDoc
+   (hub collection, team-writable); the weekly publisher reads that doc and
+   drops reviewed items from the next build. */
+function MfgChecklistSection({ section, isTeam }) {
+  const state = useMfgHubDoc(section.stateDoc);
+  const done = (state && state.done) || {};
+  const [busy, setBusy] = useState(null);
+  const toggle = async (id) => {
+    if (!isTeam || !section.stateDoc) return;
+    setBusy(id);
+    try {
+      await setDoc(doc(mfgDb, "hub", section.stateDoc),
+        { done: { [id]: done[id] ? null : Date.now() }, updatedAt: Date.now() }, { merge: true });
+    } catch (e) {
+      alert(`Could not save (${e.code || e.message}).`);
+    }
+    setBusy(null);
+  };
+  const rows = Array.isArray(section.rows) ? section.rows : [];
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
+      {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {rows.map((r, i) => {
+          const isDone = !!done[r.id];
+          return (
+            <div key={r.id || i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 12px", borderRadius: 10, background: i % 2 ? "#F5F7F9" : "#fff", border: `1px solid ${T.line}` }}>
+              <button onClick={() => toggle(r.id)} disabled={!isTeam || busy === r.id}
+                title={isDone ? "Mark as not done (it will return next week)" : "Mark reviewed/done (drops from next week's brief)"}
+                style={{
+                  width: 20, height: 20, marginTop: 1, borderRadius: 6, flexShrink: 0,
+                  cursor: isTeam ? "pointer" : "default", border: `2px solid ${isDone ? T.leaf : T.inkSoft}`,
+                  background: isDone ? T.leaf : "transparent", color: "#fff", fontSize: 13, fontWeight: 900,
+                  lineHeight: "16px", padding: 0, opacity: busy === r.id ? 0.4 : 1,
+                }}>{isDone ? "✓" : ""}</button>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: isDone ? T.inkSoft : T.marigoldDeep, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{r.focus}</span>
+              <div style={{
+                fontSize: 13.5, color: isDone ? T.inkSoft : T.ink, fontWeight: 600, lineHeight: 1.45,
+                textDecoration: isDone ? "line-through" : "none",
+              }}>{r.text}</div>
+            </div>
+          );
+        })}
+        {rows.length === 0 && <div style={{ fontSize: 13, color: T.inkSoft }}>Nothing this week.</div>}
+      </div>
     </div>
   );
 }
@@ -3245,6 +3354,7 @@ function MfgSection({ section, userEmail, isTeam }) {
   if (section.type === "listingTable") return <MfgListingTableSection section={section} userEmail={userEmail} />;
   if (section.type === "kpiExplorer") return <MfgKpiExplorerSection section={section} />;
   if (section.type === "monthlyCompare") return <MfgMonthlyCompareSection section={section} />;
+  if (section.type === "checklist") return <MfgChecklistSection section={section} isTeam={isTeam} />;
   if (section.type === "benchmark") return <MfgBenchmarkSection section={section} />;
   if (section.type === "compset") return <MfgCompsetSection section={section} />;
   if (section.type === "compsetList") return <MfgCompsetListSection section={section} />;

@@ -145,3 +145,9 @@ Client logins (via the hub's roles) can read only their own document — already
   basis Same-time-LY vs Final, month range with a Full Year reset) and
   recomputes the KPI tiles, a line chart (CY, comp STLY, comp final) and
   the monthly grid client-side.
+- Amendment (2026-10-06): `table` sections accept `groups` ([{label, span}],
+  a centered grouped-header row with separators at group boundaries) and
+  `firstColWidth`. New section type `checklist`: {title, stateDoc, rows:
+  [{id, focus, text}]}; checking a row strikes it through and writes
+  done.{id} into hub/{stateDoc} (team-writable), which the writer reads on
+  the next build to drop reviewed items.
