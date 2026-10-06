@@ -4091,7 +4091,7 @@ function MFGPortal({ clientParam }) {
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
       <div className="mfg-noprint" style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
-        <div style={{ maxWidth: tab === "customers" ? 1100 : 1520, margin: "0 auto", padding: "16px 20px 0" }}>
+        <div style={{ maxWidth: 1520, margin: "0 auto", padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Briefcase size={20} color="#fff" />
@@ -4115,7 +4115,7 @@ function MFGPortal({ clientParam }) {
         </div>
       </div>
 
-      <div className="mfg-print-area" style={{ maxWidth: tab === "customers" ? 1100 : 1520, margin: "0 auto", padding: "22px 20px 60px" }}>
+      <div className="mfg-print-area" style={{ maxWidth: 1520, margin: "0 auto", padding: "22px 20px 60px" }}>
         {tab !== "customers" && (
           <div className="mfg-noprint" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
             <button onClick={() => window.print()} style={MFG_CHIP(true)}>Export PDF</button>
