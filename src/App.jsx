@@ -3259,8 +3259,12 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
 /*  comes from the rules' todolist carve-out. Blocks never re-order.   */
 /* ------------------------------------------------------------------ */
 const PORTAL_TD_BLUE = "#1F6FB2";
+// Departing clients drop off the Customer List but stay in the roster so
+// history (Revenue Tracking, dashboards) is untouched.
+// nashville: client through Oct 2026, card removed 2026-10-05 (Mike).
+const PORTAL_TD_HIDDEN = ["nashville"];
 const PORTAL_TD = [
-  ...CLIENTS.filter((c) => !c.demo).map((c) => ({ ...c, dash: true, blue: false })),
+  ...CLIENTS.filter((c) => !c.demo && !PORTAL_TD_HIDDEN.includes(c.id)).map((c) => ({ ...c, dash: true, blue: false })),
   ...CLIENTS.filter((c) => c.demo).map((c) => ({ ...c, dash: true, blue: true })),
   { id: "164apr", label: "164 Annable Point Road", abbr: "164APR", blue: true },
   { id: "realty", label: "Realty Advisors", abbr: "RA", blue: true },
