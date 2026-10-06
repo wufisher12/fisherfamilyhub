@@ -3382,10 +3382,16 @@ function finYears() {
 const finMoney = (v, dash = "–") =>
   v == null || v === 0 ? dash : `$${Math.round(v).toLocaleString()}`;
 
+// Clients who left the business: excluded when a new year's client list is
+// started from the prior year. nashville: departed end of Oct 2026.
+const FIN_DEPARTED = ["nashville-vacation-homes"];
+
 function MFGRevenueTracking({ userEmail }) {
   const years = finYears();
   const [year, setYear] = useState(String(Math.min(new Date().getFullYear(), years[years.length - 1])));
   const finDoc = useMfgHubDoc(`mfg-finance-${year}`);
+  // Prior year's doc feeds the start-of-year roll-forward.
+  const prevDoc = useMfgHubDoc(`mfg-finance-${Number(year) - 1}`);
   const [editor, setEditor] = useState(null);   // {cid, m} | {cid, field:"meta"} | {emp, m} | {add:true}
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
@@ -3511,6 +3517,21 @@ function MFGRevenueTracking({ userEmail }) {
       <div className="mfg-noprint">
         <MfgNoteSection section={{ text: "Billed in arrears, logged on the RECEIVED date: January services are invoiced Jan 31 and count as February revenue. Enter each month's invoice when it goes out, then the amount paid — matching amounts mean $0 accounts receivable." }} />
       </div>
+
+      {finDoc !== undefined && clients.length === 0 && Object.keys(prevDoc?.clients || {}).length > 0 && (
+        <div className="mfg-noprint" style={{ ...MFG_CARD, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13.5, color: T.ink, fontWeight: 600 }}>
+            No clients yet for {year}. Start from the {Number(year) - 1} client list? Departed clients are left out; projections start blank.
+          </div>
+          <button disabled={saving} style={MFG_CHIP(true)} onClick={() => {
+            const next = {};
+            Object.entries(prevDoc.clients).forEach(([cid, c]) => {
+              if (!FIN_DEPARTED.includes(cid)) next[cid] = { label: c.label || cid, order: c.order ?? 999 };
+            });
+            save({ clients: next, seededFrom: `mfg-finance-${Number(year) - 1} client list, departed clients excluded` });
+          }}>{saving ? "Starting…" : `Start ${year} from ${Number(year) - 1}`}</button>
+        </div>
+      )}
 
       {/* Five tiles on one line (Mike, 2026-10-05): GP green, margin gold. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
