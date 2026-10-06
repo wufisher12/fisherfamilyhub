@@ -133,3 +133,15 @@ Client logins (via the hub's roles) can read only their own document — already
   "Export PDF" button, which prints just that tab's sections as one
   landscape Letter page (browser print-to-PDF; nav and controls hidden, a
   print-only title line with client, tab and as-of date added).
+
+## v2.3 addition (2026-10-06, first user: Giants Ridge)
+
+- `monthlyCompare` — interactive year-over-year explorer. The doc ships
+  per-year monthly data: `years: {"2026": {final: {rent[12], paid[12],
+  owner[12], avail[12]}, cut1/cut2/cut3: {rent[12], paid[12]}}}` where
+  `cutK` is the year's position with bookings made on or before (asOf
+  minus K years). Plus `asOf`, `defaultCy`, `defaultComp`, `cyOptions`,
+  `compOptions`. The hub renders filter chips (view year, compare-vs year,
+  basis Same-time-LY vs Final, month range with a Full Year reset) and
+  recomputes the KPI tiles, a line chart (CY, comp STLY, comp final) and
+  the monthly grid client-side.

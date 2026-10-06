@@ -3110,6 +3110,132 @@ function MfgComingSoon({ text }) {
 }
 
 // Unknown section types are ignored per the contract.
+/* monthlyCompare (contract v2.3): interactive year-over-year explorer.
+   The doc ships per-year monthly data (final + booked-by-aligned-cutoff
+   variants); the viewer picks the year, the comparison year, the basis
+   (STLY-aligned or final/current) and a month range, and the tiles, line
+   chart and table recompute together. */
+const MC_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function MfgMonthlyCompareSection({ section }) {
+  const years = section.years || {};
+  const cyOpts = Array.isArray(section.cyOptions) ? section.cyOptions : [];
+  const compOpts = Array.isArray(section.compOptions) ? section.compOptions : [];
+  const [cy, setCy] = useState(section.defaultCy || cyOpts[0]);
+  const [comp, setComp] = useState(section.defaultComp || (section.defaultCy || cyOpts[0]) - 1);
+  const [basis, setBasis] = useState("stly");
+  const [m0, setM0] = useState(1);
+  const [m1, setM1] = useState(12);
+
+  const pickCy = (y) => { setCy(y); setComp(y - 1); };
+  const yd = (y) => years[String(y)] || {};
+  const curF = yd(cy).final || {};
+  const compCut = yd(comp)["cut" + (cy - comp)] || null;
+  const compF = yd(comp).final || {};
+  const useStly = basis === "stly" && !!compCut;
+  const compSel = useStly ? compCut : compF;
+  const compLab = useStly ? `${comp} STLY` : `${comp} final`;
+
+  const asOf = section.asOf ? new Date(section.asOf + "T00:00:00") : new Date();
+  const otb = (m) => cy > asOf.getFullYear() || (cy === asOf.getFullYear() && m >= asOf.getMonth() + 1);
+
+  const val = (d, key, m) => (Array.isArray(d[key]) ? d[key][m - 1] : null) ?? 0;
+  const range = [];
+  for (let m = m0; m <= m1; m++) range.push(m);
+  const agg = (d, availFrom) => {
+    const a = { rent: 0, paid: 0, owner: 0, avail: 0 };
+    range.forEach((m) => {
+      a.rent += val(d, "rent", m); a.paid += val(d, "paid", m);
+      a.owner += val(d, "owner", m); a.avail += val(availFrom, "avail", m);
+    });
+    a.adr = a.paid ? a.rent / a.paid : null;
+    a.occ = a.avail ? a.paid / a.avail : null;
+    return a;
+  };
+  const A = agg(curF, curF), B = agg(compSel, compF);
+
+  const mk = (v) => (!v ? "—" : Math.abs(v) >= 1000 ? `$${(v / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : `$${Math.round(v)}`);
+  const pctTxt = (c, p) => (p ? `${(((c - p) / p) * 100) >= 0 ? "+" : ""}${(((c - p) / p) * 100).toFixed(1)}%` : "");
+  const pctCellMc = (c, p) => {
+    if (!p) return { text: "—", tone: "muted" };
+    const v = ((c - p) / p) * 100;
+    if (Math.abs(v) < 0.5) return { text: "0%", tone: "muted" };
+    return { text: `${v > 0 ? "+" : ""}${Math.round(v)}%`, tone: v > 0 ? "pos" : "neg" };
+  };
+  const ptsCellMc = (c, p) => {
+    if (c == null || p == null) return { text: "—", tone: "muted" };
+    const d = (c - p) * 100;
+    if (Math.abs(d) < 0.05) return { text: "0.0 pts", tone: "muted" };
+    return { text: `${d > 0 ? "+" : ""}${d.toFixed(1)} pts`, tone: d > 0 ? "pos" : "neg" };
+  };
+
+  const tiles = [
+    { label: "Rent", value: `$${Math.round(A.rent).toLocaleString()}`, delta: pctTxt(A.rent, B.rent) && `${pctTxt(A.rent, B.rent)} vs ${compLab}`, dir: A.rent >= B.rent ? "up" : "down", hint: `${compLab}: $${Math.round(B.rent).toLocaleString()}` },
+    { label: "Paid Unit-Nights", value: A.paid.toLocaleString(), delta: pctTxt(A.paid, B.paid) && `${pctTxt(A.paid, B.paid)} vs ${compLab}`, dir: A.paid >= B.paid ? "up" : "down", hint: `${compLab}: ${B.paid.toLocaleString()}` },
+    { label: "ADR", value: A.adr ? `$${Math.round(A.adr)}` : "—", delta: A.adr && B.adr ? `${pctTxt(A.adr, B.adr)} vs ${compLab}` : "", dir: (A.adr || 0) >= (B.adr || 0) ? "up" : "down", hint: B.adr ? `${compLab}: $${Math.round(B.adr)}` : "" },
+    { label: "Paid Occupancy", value: A.occ != null ? `${(A.occ * 100).toFixed(1)}%` : "—", delta: A.occ != null && B.occ != null ? `${((A.occ - B.occ) * 100) >= 0 ? "+" : ""}${((A.occ - B.occ) * 100).toFixed(1)} pts` : "", dir: (A.occ || 0) >= (B.occ || 0) ? "up" : "down", hint: B.occ != null ? `${compLab}: ${(B.occ * 100).toFixed(1)}%` : "" },
+    { label: "Owner Nights", value: A.owner.toLocaleString(), delta: "", dir: "flat", hint: `${comp} final: ${agg(compF, compF).owner.toLocaleString()}` },
+  ];
+
+  const chartSeries = [{ name: String(cy), values: range.map((m) => Math.round(val(curF, "rent", m))) }];
+  if (compCut) chartSeries.push({ name: `${comp} STLY`, values: range.map((m) => Math.round(val(compCut, "rent", m))) });
+  chartSeries.push({ name: `${comp} final`, values: range.map((m) => Math.round(val(compF, "rent", m))) });
+
+  const rows = range.map((m) => {
+    const r = val(curF, "rent", m), p = val(curF, "paid", m), av = val(curF, "avail", m);
+    const br = val(compSel, "rent", m), bp = val(compSel, "paid", m), bav = val(compF, "avail", m);
+    const adr = p ? r / p : null, badr = bp ? br / bp : null;
+    const occ = av ? p / av : null, bocc = bav ? bp / bav : null;
+    return { cells: [
+      MC_MONTHS[m - 1] + (otb(m) ? " *" : ""),
+      { text: mk(r), tone: "strong" },
+      { text: mk(br), tone: "muted" },
+      pctCellMc(r, br),
+      { text: adr ? `$${Math.round(adr)}` : "—", tone: "strong" },
+      pctCellMc(adr || 0, badr || 0),
+      { text: occ != null ? `${Math.round(occ * 100)}%` : "—" },
+      ptsCellMc(occ, bocc),
+      { text: String(val(curF, "owner", m) || "—"), tone: "muted" },
+    ] };
+  });
+  rows.push({ cells: [
+    "Total", { text: mk(A.rent), tone: "strong" }, { text: mk(B.rent), tone: "muted" },
+    pctCellMc(A.rent, B.rent), { text: A.adr ? `$${Math.round(A.adr)}` : "—", tone: "strong" },
+    pctCellMc(A.adr || 0, B.adr || 0), { text: A.occ != null ? `${(A.occ * 100).toFixed(1)}%` : "—" },
+    ptsCellMc(A.occ, B.occ), { text: String(A.owner) },
+  ], band: true, rule: true });
+
+  const sel = { fontFamily: "Inter, sans-serif", fontSize: 12.5, fontWeight: 700, padding: "6px 8px", borderRadius: 8, border: `1px solid ${T.line}`, color: T.ink, background: "#fff" };
+  const lbl = { fontSize: 11, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", marginRight: 4 };
+  const fullYear = m0 === 1 && m1 === 12;
+
+  return (
+    <div>
+      <div className="mfg-noprint" style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <span style={lbl}>View</span>
+        {cyOpts.map((y) => <button key={y} onClick={() => pickCy(y)} style={MFG_CHIP(y === cy)}>{y}</button>)}
+        <span style={lbl}>Compare vs</span>
+        {compOpts.filter((y) => y < cy).map((y) => <button key={y} onClick={() => setComp(y)} style={MFG_CHIP(y === comp)}>{y}</button>)}
+        <span style={lbl}>Basis</span>
+        <button onClick={() => setBasis("stly")} style={MFG_CHIP(basis === "stly")} title="Comparison year's bookings on hand at the same relative date">Same time LY</button>
+        <button onClick={() => setBasis("final")} style={MFG_CHIP(basis === "final")} title="Comparison year's final (or current) numbers">Final</button>
+        <span style={lbl}>Months</span>
+        <select value={m0} onChange={(e) => { const v = +e.target.value; setM0(v); if (v > m1) setM1(v); }} style={sel}>
+          {MC_MONTHS.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
+        </select>
+        <span style={{ color: T.inkSoft, fontWeight: 700 }}>to</span>
+        <select value={m1} onChange={(e) => { const v = +e.target.value; setM1(v); if (v < m0) setM0(v); }} style={sel}>
+          {MC_MONTHS.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
+        </select>
+        <button onClick={() => { setM0(1); setM1(12); }} style={MFG_CHIP(fullYear)}>Full Year</button>
+      </div>
+      <MfgTilesSection section={{ title: `${cy} vs ${compLab}${fullYear ? "" : ` · ${MC_MONTHS[m0 - 1]}-${MC_MONTHS[m1 - 1]}`}`, titleStyle: "heading", items: tiles }} />
+      <MfgChartSection section={{ kind: "line", title: `Monthly rent (* = on the books at ${section.asOf})`, xLabels: range.map((m) => MC_MONTHS[m - 1]), series: chartSeries, format: "currency" }} />
+      <MfgTableSection section={{ columns: ["Month", "Rent", compLab, "vs " + (useStly ? "STLY" : "final"), "ADR", "ADR vs", "Paid Occ", "Occ vs", "Owner Nts"], rows, dense: true, headerFill: "gold", stickyFirst: true, sortable: false, nowrapFirst: true }} />
+    </div>
+  );
+}
+
 function MfgSection({ section, userEmail, isTeam }) {
   if (!section || typeof section !== "object") return null;
   if (section.type === "tiles") return <MfgTilesSection section={section} />;
@@ -3118,6 +3244,7 @@ function MfgSection({ section, userEmail, isTeam }) {
   if (section.type === "note") return <MfgNoteSection section={section} />;
   if (section.type === "listingTable") return <MfgListingTableSection section={section} userEmail={userEmail} />;
   if (section.type === "kpiExplorer") return <MfgKpiExplorerSection section={section} />;
+  if (section.type === "monthlyCompare") return <MfgMonthlyCompareSection section={section} />;
   if (section.type === "benchmark") return <MfgBenchmarkSection section={section} />;
   if (section.type === "compset") return <MfgCompsetSection section={section} />;
   if (section.type === "compsetList") return <MfgCompsetListSection section={section} />;
