@@ -2244,8 +2244,16 @@ function MfgTilesSection({ section }) {
 
 function MfgChartSection({ section, seriesStyles, compact }) {
   const [hover, setHover] = useState(null);
-  // Click a legend entry to hide/show that series.
-  const [hidden, setHidden] = useState({});
+  // Click a legend entry to hide/show that series. A series may start
+  // hidden via its own `hidden: true` flag (one click reveals it).
+  const [hidden, setHidden] = useState(() => {
+    const h = {};
+    const max = seriesStyles ? seriesStyles.length : MFG_SERIES.length;
+    (Array.isArray(section.series) ? section.series : [])
+      .filter((s) => s && Array.isArray(s.values)).slice(0, max)
+      .forEach((s, i) => { if (s.hidden) h[i] = true; });
+    return h;
+  });
   const xLabels = Array.isArray(section.xLabels) ? section.xLabels : [];
   const maxSeries = seriesStyles ? seriesStyles.length : MFG_SERIES.length;
   const series = (Array.isArray(section.series) ? section.series : [])
@@ -3207,7 +3215,8 @@ function MfgMonthlyCompareSection({ section }) {
 
   const chartSeries = [{ name: String(cy), values: range.map((m) => Math.round(val(curF, "rent", m))) }];
   if (compCut) chartSeries.push({ name: `${comp} STLY`, values: range.map((m) => Math.round(val(compCut, "rent", m))) });
-  chartSeries.push({ name: `${comp} final`, values: range.map((m) => Math.round(val(compF, "rent", m))) });
+  // Final starts hidden (legend click reveals it); apples-to-apples first.
+  chartSeries.push({ name: `${comp} final`, values: range.map((m) => Math.round(val(compF, "rent", m))), hidden: true });
 
   // One group of columns per KPI: this year, LY final/current, STLY, and the
   // difference vs the selected basis.
@@ -3289,7 +3298,7 @@ function MfgMonthlyCompareSection({ section }) {
         <button onClick={() => { setM0(1); setM1(12); }} style={MFG_CHIP(fullYear)}>Full Year</button>
       </div>
       <MfgTilesSection section={{ title: `${cy} vs ${compLab}${fullYear ? "" : ` · ${MC_MONTHS[m0 - 1]}-${MC_MONTHS[m1 - 1]}`}`, titleStyle: "heading", items: tiles }} />
-      <MfgChartSection section={{ kind: "line", title: `Monthly rent (* = on the books at ${section.asOf})`, xLabels: range.map((m) => MC_MONTHS[m - 1]), series: chartSeries, format: "currency" }} />
+      <MfgChartSection key={`${cy}|${comp}`} section={{ kind: "line", title: `Monthly rent (* = on the books at ${section.asOf}; click the legend to show ${comp} final)`, xLabels: range.map((m) => MC_MONTHS[m - 1]), series: chartSeries, format: "currency" }} />
       <MfgTableSection section={{ columns: tblColumns, groups: tblGroups, rows, dense: true, headerFill: "gold", stickyFirst: true, sortable: false, nowrapFirst: true, firstColWidth: 70 }} />
     </div>
   );
