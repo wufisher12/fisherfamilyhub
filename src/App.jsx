@@ -2430,7 +2430,11 @@ function MfgTableSection({ section }) {
   }
   const groupBorder = (i) => (groupStarts.has(i) ? { borderLeft: `2px solid ${T.line}` } : {});
   const pad = dense ? "3px 8px" : "9px 10px";
-  const fs = dense ? 12.5 : 13.5;
+  // textSize overrides the cell font size; center aligns every column but
+  // the first (v2.3, Ohana).
+  const fs = section.textSize || (dense ? 12.5 : 13.5);
+  const center = !!section.center;
+  const alignOf = (i) => (i === 0 ? "left" : center ? "center" : "right");
   const BAND = "#E7EFF6";
   const headerBg = headerFill === "gold" ? "#F3E5C0" : "#D9E9F6";
   const firstW = section.firstColWidth || 150;
@@ -2479,7 +2483,7 @@ function MfgTableSection({ section }) {
             {columns.map((c, i) => (
               <th key={i} onClick={() => clickCol(i)} title={sortable ? "Sort" : undefined}
                 style={{
-                  textAlign: i === 0 ? "left" : "right",
+                  textAlign: alignOf(i),
                   ...(headerFill
                     ? { fontSize: 13, fontWeight: 800, color: "#10181F",
                         background: headerBg, borderBottom: `2px solid ${T.ink}`,
@@ -2510,7 +2514,7 @@ function MfgTableSection({ section }) {
                   arrays in arrays); plain arrays are accepted too. */}
               {(Array.isArray(r) ? r : Array.isArray(r?.cells) ? r.cells : []).map((cell, ci) => (
                 <td key={ci} style={{
-                  textAlign: ci === 0 ? "left" : "right", fontSize: sub ? fs - 1.5 : fs, color: T.ink,
+                  textAlign: alignOf(ci), fontSize: sub ? fs - 1.5 : fs, color: T.ink,
                   fontWeight: ci === 0 || band ? 700 : 500, padding: pad, borderTop,
                   fontStyle: sub ? "italic" : undefined,
                   whiteSpace: ci === 0 ? (nowrapFirst ? "nowrap" : "normal") : "nowrap",
@@ -2535,9 +2539,29 @@ function MfgTableSection({ section }) {
 }
 
 function MfgNoteSection({ section }) {
+  // style "footnote" (v2.3): small italic charcoal text, no box; for the
+  // methodology lines under a table.
+  if (section.style === "footnote") {
+    return (
+      <div style={{ padding: "2px 6px", marginBottom: 14, fontSize: 11.5, color: "#4A5560", fontStyle: "italic", lineHeight: 1.5 }}>
+        {section.text}
+      </div>
+    );
+  }
   return (
     <div style={{ background: T.skySoft, borderRadius: 12, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: T.ink, lineHeight: 1.55 }}>
       {section.text}
+    </div>
+  );
+}
+
+/* heading (v2.3): a large section title with an optional smaller italic
+   definition line underneath, to introduce a block of sections. */
+function MfgHeadingSection({ section }) {
+  return (
+    <div style={{ margin: "6px 0 10px" }}>
+      <div style={{ fontSize: 22, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif", letterSpacing: "-0.01em" }}>{section.text}</div>
+      {section.sub && <div style={{ fontSize: 12, color: "#4A5560", fontStyle: "italic", marginTop: 2 }}>{section.sub}</div>}
     </div>
   );
 }
@@ -3392,6 +3416,7 @@ function MfgSection({ section, userEmail, isTeam }) {
   if (section.type === "chart") return <MfgChartSection section={section} />;
   if (section.type === "table") return <MfgTableSection section={section} />;
   if (section.type === "note") return <MfgNoteSection section={section} />;
+  if (section.type === "heading") return <MfgHeadingSection section={section} />;
   if (section.type === "listingTable") return <MfgListingTableSection section={section} userEmail={userEmail} />;
   if (section.type === "kpiExplorer") return <MfgKpiExplorerSection section={section} />;
   if (section.type === "monthlyCompare") return <MfgMonthlyCompareSection section={section} />;

@@ -151,3 +151,9 @@ Client logins (via the hub's roles) can read only their own document — already
   [{id, focus, text}]}; checking a row strikes it through and writes
   done.{id} into hub/{stateDoc} (team-writable), which the writer reads on
   the next build to drop reviewed items.
+- Amendment (2026-10-07, Ohana VR): `table` sections accept `center: true`
+  (every column but the first centered, headers too) and `textSize` (cell
+  font size in px). `note` sections accept `style: "footnote"` (small
+  italic charcoal text, no box). New section type `heading`: {text, sub}
+  renders a large section title with an optional smaller italic definition
+  line, to introduce a block of sections.
