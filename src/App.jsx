@@ -3432,6 +3432,24 @@ function MfgSection({ section, userEmail, isTeam }) {
   return null;
 }
 
+// Shared print stylesheet: client screens, the team portal and the
+// headless print mode all inject it once (id guard).
+function ensurePrintCss() {
+  if (document.getElementById("mfg-print-css")) return;
+  const style = document.createElement("style");
+  style.id = "mfg-print-css";
+  style.textContent = `@media print {
+    @page { size: letter landscape; margin: 9mm; }
+    body { background: #fff !important; }
+    .mfg-noprint { display: none !important; }
+    .mfg-print-area { zoom: 0.6; }
+    .mfg-print-area * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .mfg-print-area .mfg-table-card { overflow: visible !important; border: none !important; }
+    .mfg-print-title { display: flex !important; }
+  }`;
+  document.head.appendChild(style);
+}
+
 function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
   // ?sample=1 previews the bundled sample document without live data.
   const sample = new URLSearchParams(window.location.search).has("sample");
@@ -3458,21 +3476,7 @@ function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
   // Print styles for the Export PDF button (subtabs with `exportPdf: true`):
   // one landscape Letter page of just the active tab's sections. Injected
   // here because the portal never runs the family app's style effect.
-  useEffect(() => {
-    if (document.getElementById("mfg-print-css")) return;
-    const style = document.createElement("style");
-    style.id = "mfg-print-css";
-    style.textContent = `@media print {
-      @page { size: letter landscape; margin: 9mm; }
-      body { background: #fff !important; }
-      .mfg-noprint { display: none !important; }
-      .mfg-print-area { zoom: 0.6; }
-      .mfg-print-area * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .mfg-print-area .mfg-table-card { overflow: visible !important; border: none !important; }
-      .mfg-print-title { display: flex !important; }
-    }`;
-    document.head.appendChild(style);
-  }, []);
+  useEffect(() => { ensurePrintCss(); }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
@@ -4342,22 +4346,7 @@ function MFGPortal({ clientParam }) {
 
   // Print styles for the Export PDF buttons (Company Overview and Revenue
   // Tracking): landscape Letter, nav and controls hidden, content scaled.
-  // Same stylesheet the client screens inject; the id guard keeps it single.
-  useEffect(() => {
-    if (document.getElementById("mfg-print-css")) return;
-    const style = document.createElement("style");
-    style.id = "mfg-print-css";
-    style.textContent = `@media print {
-      @page { size: letter landscape; margin: 9mm; }
-      body { background: #fff !important; }
-      .mfg-noprint { display: none !important; }
-      .mfg-print-area { zoom: 0.6; }
-      .mfg-print-area * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .mfg-print-area .mfg-table-card { overflow: visible !important; border: none !important; }
-      .mfg-print-title { display: flex !important; }
-    }`;
-    document.head.appendChild(style);
-  }, []);
+  useEffect(() => { ensurePrintCss(); }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(mfgAuth, (u) => { setUser(u || null); setRoleInfo(undefined); setErr(null); });
@@ -4629,7 +4618,83 @@ function loadIdentity() {
 const PORTAL_PARAMS = new URLSearchParams(window.location.search);
 const IS_MFG_PORTAL = PORTAL_PARAMS.get("portal") === "mfg";
 
+/* Headless print mode (?print=<tabId>[:<subtabId,subtabId>]): renders a
+   client document supplied by the host page as window.__PRINT_DOC__, one
+   print block per requested subtab, each starting a new page. No auth and
+   no Firestore: the weekly report script serves the built app locally with
+   the published doc injected and lets Edge print it to PDF. */
+// Letter page with 9mm margins, in CSS px (96/in): the printable box each
+// block has to fit. Blocks lay out at the width that fills the page at the
+// standard 0.6 print zoom; a block taller than its page gets a smaller zoom
+// instead of spilling onto a second page.
+const PRINT_ZOOM = 0.6;
+const PRINT_PAGE = {
+  landscape: { w: 988, h: 748, layoutW: 1640 },
+  portrait: { w: 748, h: 988, layoutW: 1240 },
+};
+
+function MfgPrintScreen() {
+  const doc = window.__PRINT_DOC__;
+  const spec = PORTAL_PARAMS.get("print") || "";
+  const portraitIds = (PORTAL_PARAMS.get("portrait") || "").split(",").filter(Boolean);
+  const [tabId, subSpec] = spec.split(":");
+  const tab = (doc?.tabs || []).find((t) => t.id === tabId);
+  const refs = useRef([]);
+  const [zooms, setZooms] = useState(null);
+  useEffect(() => {
+    ensurePrintCss();
+    if (!document.getElementById("mfg-print-pages")) {
+      const style = document.createElement("style");
+      style.id = "mfg-print-pages";
+      style.textContent = "@page mfg-landscape { size: letter landscape; } @page mfg-portrait { size: letter portrait; }";
+      document.head.appendChild(style);
+    }
+    const fit = () => {
+      const next = refs.current.map((el) => {
+        if (!el) return PRINT_ZOOM;
+        const page = PRINT_PAGE[el.dataset.orient] || PRINT_PAGE.landscape;
+        return Math.min(PRINT_ZOOM, Math.floor((page.h * 0.98 / el.offsetHeight) * 1000) / 1000);
+      });
+      setZooms(next);
+      window.__PRINT_READY__ = true;
+    };
+    (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(fit);
+  }, []);
+  if (!doc || !tab) return <div style={{ padding: 20, fontFamily: "Inter, sans-serif" }}>Print document or tab not found.</div>;
+  const wanted = subSpec ? subSpec.split(",") : null;
+  const blocks = Array.isArray(tab.subtabs)
+    ? tab.subtabs.filter((s) => !wanted || wanted.includes(s.id)).map((s) => ({ id: s.id, label: s.label, sections: s.sections }))
+    : [{ id: tab.id, label: null, sections: tab.sections }];
+  const asOf = typeof doc.updated === "number"
+    ? new Date(doc.updated).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+  return (
+    <div style={{ background: "#fff", fontFamily: "Inter, sans-serif" }}>
+      {blocks.map((b, i) => {
+        const orient = portraitIds.includes(b.id) ? "portrait" : "landscape";
+        const page = PRINT_PAGE[orient];
+        return (
+          <div key={i} ref={(el) => { refs.current[i] = el; }} className="mfg-print-area" data-orient={orient}
+            style={{ width: page.layoutW, margin: "0 auto", zoom: zooms ? zooms[i] : 1, page: `mfg-${orient}`,
+              breakBefore: i > 0 ? "page" : "auto", pageBreakBefore: i > 0 ? "always" : "auto" }}>
+            <div className="mfg-print-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, borderBottom: `3px solid ${T.ink}`, paddingBottom: 8 }}>
+              <div>
+                <span style={{ fontSize: 22, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{doc.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: T.inkSoft, marginLeft: 12 }}>{[tab.label, b.label].filter(Boolean).join(" · ")}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>{asOf ? `As of ${asOf} · ` : ""}Prepared by Mike Fisher Group</div>
+            </div>
+            {(b.sections || []).map((s, j) => <MfgSection key={j} section={s} userEmail="" isTeam={false} />)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
+  if (PORTAL_PARAMS.get("print")) {
+    return <MfgPrintScreen />;
+  }
   if (IS_MFG_PORTAL) {
     return <MFGPortal clientParam={PORTAL_PARAMS.get("client")} />;
   }

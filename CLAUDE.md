@@ -67,6 +67,10 @@ Inter. Goldfish motif is family-only.
   repo). Never re-author the renderer in the task.
 - Repo secrets (names only): MAIL_USERNAME, MAIL_PASSWORD, MAIL_TO,
   FIREBASE_SERVICE_ACCOUNT, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN.
+- Headless print mode: `?print=<tabId>:<subtabIds>&portrait=<subtabIds>` renders a client
+  doc supplied as `window.__PRINT_DOC__` (no auth), one Letter page per subtab, using the
+  same print CSS as the Export PDF buttons. Driven by `company-hub/ohana/make_pdfs.py`
+  (local server over `dist/` + Edge `--print-to-pdf`) for the Monday emailed reports.
 
 ## Portal state (Oct 2026)
 
