@@ -2107,15 +2107,19 @@ function MFGLogin({ onError, error }) {
     borderRadius: 12, padding: "13px 15px", fontSize: 16, outline: "none",
     background: "#fff", color: T.ink, fontFamily: "Inter, sans-serif", marginBottom: 10,
   };
+  // Plain usernames (no "@") map to a synthetic address on the hub's own
+  // domain, the same trick the family login uses: Firebase needs an
+  // email-shaped id, the team only needs to remember "ohana".
+  const toLogin = (v) => (v.includes("@") ? v : `${v.toLowerCase()}@fisherhub.local`);
   const go = async () => {
     if (!email.trim() || !pw) return;
     setBusy(true);
     try {
-      await signInWithEmailAndPassword(mfgAuth, email.trim(), pw);
+      await signInWithEmailAndPassword(mfgAuth, toLogin(email.trim()), pw);
     } catch (e) {
       onError(
         e.code === "auth/invalid-credential" || e.code === "auth/wrong-password" || e.code === "auth/user-not-found"
-          ? "That email or password isn't right."
+          ? "That username or password isn't right."
           : `Sign-in problem (${e.code || e.message})`
       );
     }
@@ -2134,7 +2138,7 @@ function MFGLogin({ onError, error }) {
           </div>
         </div>
         <div style={{ background: "#fff", borderRadius: "0 0 16px 16px", padding: 24, border: `1px solid ${T.line}`, borderTop: "none" }}>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="username" style={inputS} />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email or username" type="text" autoComplete="username" style={inputS} />
           <input value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="Password" type="password" autoComplete="current-password" style={inputS} />
           {error && <div style={{ color: MFG_RED, fontSize: 13, marginBottom: 10, fontWeight: 600 }}>{error}</div>}
           <button onClick={go} disabled={busy} style={{
