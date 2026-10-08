@@ -27,9 +27,19 @@ export function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
     ? new Date(dash.updated).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
     : null;
 
-  // Docs with `wide: true` stretch toward full screen (dense multi-column
-  // tables); everything else keeps the original 1100px column.
-  const maxW = dash?.wide ? 1760 : 1100;
+  // Width (v2.4): `wide` may sit on the doc, a tab or a subtab; the first
+  // one defined (subtab, then tab, then doc) sets the content column.
+  // true = 1760px cap (dense multi-column tables), "full" = no cap (the
+  // window less the 20px side padding), unset = the original 1100px column.
+  const rankOf = (w) => (w === "full" ? 2 : w ? 1 : 0);
+  const CAPS = [1100, 1760, "none"];
+  const contentWide = [activeSub?.wide, activeTab?.wide, dash?.wide].find((w) => w !== undefined && w !== null);
+  const maxW = CAPS[rankOf(contentWide)];
+  // The header bar takes the widest width used anywhere in the doc, so it
+  // never jumps when switching tabs; narrower tabs center under it.
+  const headerW = CAPS[Math.max(rankOf(dash?.wide), ...tabs.flatMap((t) => [
+    rankOf(t.wide), ...(Array.isArray(t.subtabs) ? t.subtabs : []).map((s) => rankOf(s?.wide)),
+  ]))];
 
   // Print styles for the Export PDF button (subtabs with `exportPdf: true`):
   // one landscape Letter page of just the active tab's sections. Injected
@@ -39,7 +49,7 @@ export function MfgClientScreen({ client, isTeam, onSignOut, userEmail }) {
   return (
     <div style={{ minHeight: "100vh", background: T.canvas, fontFamily: "Inter, sans-serif" }}>
       <div className="mfg-noprint" style={{ background: T.ink, borderBottom: `4px solid ${MFG_RED}` }}>
-        <div style={{ maxWidth: maxW, margin: "0 auto", padding: "16px 20px 0" }}>
+        <div style={{ maxWidth: headerW, margin: "0 auto", padding: "16px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Briefcase size={18} color="#fff" />
