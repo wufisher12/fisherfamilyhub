@@ -6,7 +6,9 @@
 > every scheduled job is registered in `../ops/README.md`. The body below is left as written
 > on Sept 15. These points in it are now out of date:
 >
-> - App size: `src/App.jsx` is about 4,540 lines as of Oct 2026, not ~2,700.
+> - App layout: `src/App.jsx` is no longer the single file. It was split on 2026-10-08
+>   into `src/family/`, `src/portal/`, `src/shared/dashboard/` and `src/lib/`; the roster
+>   `CLIENTS` now lives in `src/lib/clients.js`. See `CLAUDE.md`, Stack & layout.
 > - Portal login: the login box takes an email or a plain username; a username maps to
 >   `{name}@fisherhub.local`, and a shared `ohana` client login (role client, clientId
 >   ohana) exists for the whole Ohana team. See `CLAUDE.md`, Auth model.

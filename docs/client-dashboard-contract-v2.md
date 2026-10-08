@@ -8,7 +8,7 @@ every client can differ. Look, colors, and typography are owned by the hub.
 ## Target
 - Firebase project `fisher-family-hub`, document `hub/mfg-client-{clientId}`
 - clientId is one of: panhandle, bearcamp, killington, haller, nashville, heights,
-  newwave, franmaxon, hodnett, kauai, ohana, giantsridge. (`CLIENTS` in App.jsx also
+  newwave, franmaxon, hodnett, kauai, ohana, giantsridge. (`CLIENTS` in src/lib/clients.js also
   carries `demo`, a static anonymized Bear Camp mirror for prospects: portal-only, never a
   To Do List category, refreshed only when the Bear Camp writer is run with `--with-demo`.)
   nashville leaves at the end of October 2026.

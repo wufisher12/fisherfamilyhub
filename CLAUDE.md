@@ -13,9 +13,24 @@ Client dashboard schema: [docs/client-dashboard-contract-v2.md](docs/client-dash
 
 - React 18 + Vite. Live at https://wufisher12.github.io/fisherfamilyhub/ (GitHub Pages,
   deployed by `.github/workflows/deploy.yml` on push to main, ~2 min).
-- `src/App.jsx` is the entire app (about 4,500 lines, inline styles, lucide-react icons).
-  Still one file. Splitting it into `family/`, `portal/` and `shared/` modules is the next
-  structural change and must land as its own commit, never mixed with a feature.
+- `src/App.jsx` is a 20-line router: `?print=` goes to headless print mode, `?portal=mfg`
+  to the portal, anything else to the family app. The code lives in four folders (split
+  2026-10-08 as a pure move, inline styles and lucide-react icons throughout):
+  - `src/family/` the family face: `FamilyApp.jsx` (shell, nav, auth gate), `HomeTab`,
+    `PlanTab`, `TodoListPage`, `FinancialsPage`, `AccountsTab`, `LoginScreen`,
+    `ProfileSetup`, `planData.js` (plan defaults, `getPriorities`), `weather.js`, `photo.js`.
+  - `src/portal/` the Mike Fisher Group portal: `MFGPortal.jsx` (login state, roles, team
+    tabs), `Login`, `ClientScreen` (dashboard chrome around the renderer), `CustomerList`,
+    `RevenueTracking`, `CompanyPnL`, `finance.js` (month labels, `finYears`, `finMoney`).
+  - `src/shared/dashboard/` the contract renderer: `Section.jsx` dispatches on section
+    type to `ui.jsx` (tiles, note, heading, chips, card styles), `Chart`, `Table`,
+    `ListingTable`, `KpiExplorer`, `Benchmark`, `Reservations`, `Compset`,
+    `MonthlyCompare`, `Checklist`; `print.js` (`ensurePrintCss`) and `PrintScreen.jsx`.
+  - `src/lib/` cross-cutting: `firebase.js`, `theme.js` (`T`, `MFG_RED`), `clients.js`
+    (the `CLIENTS` roster and To Do List categories), `dates.js`, `format.js`, `hooks.js`
+    (`useIsWide`, `useHubDoc`, `useMfgHubDoc`), `params.js` (URL params read once).
+  A family change cannot reach portal code and vice versa; both import only from
+  `shared/` and `lib/`.
 - `src/firebase-config.js` public Firebase config. `src/lib/firebase.js` exports
   `auth`/`db` (family) and `mfgAuth`/`mfgDb` (second app instance so portal login never
   collides with the family session).
@@ -58,7 +73,7 @@ the same print stylesheet as the Export PDF buttons (`ensurePrintCss`). Driven b
 
 ## Client roster
 
-Single source of truth: `CLIENTS` in `App.jsx` (portal uses the same list):
+Single source of truth: `CLIENTS` in `src/lib/clients.js` (portal uses the same list):
 panhandle PHG · bearcamp BCCR · killington TKG · haller HCH · nashville NVH · heights THH ·
 newwave NW · franmaxon FMRE · hodnett HC · kauai KREG · ohana OV · giantsridge VGR.
 To Do List adds realty RA and personal PERS. Adding a client = one line in `CLIENTS`.
@@ -110,7 +125,7 @@ when the doc sets `wide`.
 
 ## Roadmap
 
-1. Split `App.jsx` into modules (own change), then the family-app overhaul.
+1. The family-app overhaul, rebuilt in `src/family/` (the `App.jsx` split landed 2026-10-08).
 2. Personal finance phase 1 in the family face (see `../personal/CLAUDE.md`), on its own
    collections and rules.
 3. Custom domain for Pages (for example hub.fishergroup.co) so the product name is free
