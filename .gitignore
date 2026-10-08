@@ -1,3 +1,6 @@
 # dependencies and build output
 node_modules/
 dist/
+
+# Local Claude Code tool state
+.claude/
