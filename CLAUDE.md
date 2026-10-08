@@ -118,7 +118,7 @@ when the doc sets `wide`.
 - Client dashboards render contract v2.3: `tiles` `chart` `table` `note` `listingTable`
   `kpiExplorer` `benchmark` `compsetList` `reservations` `monthlyCompare` `checklist`
   `heading`, with tabs and subtabs, `exportPdf`, `wide`, and the table/row flags listed in
-  the contract. Built and live: Bear Camp (writer: bearcamp-revenue repo, nightly), Ohana
+  the contract. Built and live: Bear Camp (writer: company-hub/bear-camp/bearcamp-revenue, nightly), Ohana
   (company-hub/ohana, Monday), Villas at Giants Ridge (company-hub/giantsridge, weekly).
   `demo` is a static anonymized Bear Camp mirror for prospects. Browser tab title in the
   portal is "Mike Fisher Group".

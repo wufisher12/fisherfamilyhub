@@ -41,7 +41,7 @@
 >   `?print=<tabId>:<subtabIds>&portrait=<subtabIds>` renders a doc supplied as
 >   `window.__PRINT_DOC__` with no auth, one Letter page per subtab, sharing the print CSS
 >   via `ensurePrintCss()`; `company-hub/ohana/make_pdfs.py` drives it for the Monday
->   emailed PDFs. Writers live outside this repo: bearcamp-revenue (nightly),
+>   emailed PDFs. Writers live outside this repo: company-hub/bear-camp/bearcamp-revenue (nightly),
 >   company-hub/ohana (Monday, Hostaway API), company-hub/giantsridge (weekly, manual,
 >   WebRezPro exports).
 > - Automation script paths: the scripts are `.github/scripts/news-fetch.mjs` and
