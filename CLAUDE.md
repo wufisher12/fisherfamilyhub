@@ -1,45 +1,60 @@
 # Fisher Family Hub
 
 One product, two faces: a private family app (planning, to-dos, news, calendar) and the
-Mike Fisher Group business portal (client dashboards). Owner: Mike Fisher; co-user Tina.
+Mike Fisher Group business portal (client dashboards, company finance). Owner: Mike Fisher;
+co-user Tina. The root `../CLAUDE.md` rules apply here (no em dashes, no invented data,
+secrets only in `~/.hub-secrets/`, commit trailer).
 
-Full context: [docs/fisher-hub-context-sept-2026.md](docs/fisher-hub-context-sept-2026.md).
-Client dashboard schema: [docs/client-dashboard-contract-v2.md](docs/client-dashboard-contract-v2.md).
+Context snapshot: [docs/fisher-hub-context-sept-2026.md](docs/fisher-hub-context-sept-2026.md)
+(dated; this file wins where they differ).
+Client dashboard schema: [docs/client-dashboard-contract-v2.md](docs/client-dashboard-contract-v2.md) (v2.3).
 
 ## Stack & layout
 
 - React 18 + Vite. Live at https://wufisher12.github.io/fisherfamilyhub/ (GitHub Pages,
   deployed by `.github/workflows/deploy.yml` on push to main, ~2 min).
-- `src/App.jsx` — the entire app (~2,700 lines, inline styles, lucide-react icons).
-  Deliberately one file so far. Splitting into modules is welcome, but do it as its own
-  change, never mixed with a feature.
-- `src/firebase-config.js` — public Firebase config. `src/lib/firebase.js` — exports
+- `src/App.jsx` is the entire app (about 4,500 lines, inline styles, lucide-react icons).
+  Still one file. Splitting it into `family/`, `portal/` and `shared/` modules is the next
+  structural change and must land as its own commit, never mixed with a feature.
+- `src/firebase-config.js` public Firebase config. `src/lib/firebase.js` exports
   `auth`/`db` (family) and `mfgAuth`/`mfgDb` (second app instance so portal login never
   collides with the family session).
-- `firestore.rules` (repo root) — the published security rules. Do not weaken them.
-- `.github/scripts/` — automation scripts (`news-fetch.mjs`, `calendar-sync.mjs`,
+- `firestore.rules` (repo root) are the published security rules. Do not weaken them.
+- `.github/scripts/` automation scripts (`news-fetch.mjs`, `calendar-sync.mjs`,
   `brief_render.py`). `brief_render.py` is the ONLY layout code for the morning-brief PDF.
 
 ## Auth model (three doors)
 
 1. **Family**: one shared password, username `family@fisherhub.local` baked into config.
 2. **Portal** (`?portal=mfg`, own tab, own session via `mfgAuth`): individual Firebase
-   users. Roles in collection `mfgRoles/{email}` → `{role: "team"}` (Mike, Aida, Jaimee —
-   full portal) or `{role: "client", clientId}` (own dashboard only).
+   users. The login form accepts an email or a plain username (`name` maps to
+   `name@fisherhub.local`). Roles in `mfgRoles/{email}`: `{role: "team"}` (Mike, Aida,
+   Jaimee: full portal) or `{role: "client", clientId}` (own dashboard only). Client logins:
+   Jessie Kasztelan (bearcamp); shared `ohana` username for the whole Ohana team.
 3. **Brief**: `brief@fisherhub.local`, read-only, may read `hub/plan-*` only.
+
+Headless print mode: `?print=<tabId>:<subtabIds>&portrait=<subtabIds>` renders a client
+doc supplied as `window.__PRINT_DOC__` with no auth, one Letter page per subtab, through
+the same print stylesheet as the Export PDF buttons (`ensurePrintCss`). Driven by
+`company-hub/ohana/make_pdfs.py` for the Monday emailed reports.
 
 ## Firestore data (collection `hub` unless noted)
 
-- `plan-YYYY-MM-DD` — per person (`mike`/`tina`): `priorities` [{id,text,cat,done}]
+- `plan-YYYY-MM-DD` per person (`mike`/`tina`): `priorities` [{id,text,cat,done}]
   ordered, index 0 = the star; `w1`/`w2` workouts; `fun`; `prep`; `shutdownComplete`.
   Shared: `dinner`. Legacy `top3/star/done3` read via `getPriorities()`.
-- `todolist` — `mike.items` [{id,text,cat,createdAt,due}] + `mike.notes`. `due` links a
-  task to a plan day; task stays until checked off (`completeTodo`).
-- `template` — per-person daily anchors/wrap-up.
-- `accounts` — [{name,url,username}]. **NEVER passwords.**
-- `news`, `calendar` — written by automations. `daywins` — legacy streak data.
-- `mfg-client-{clientId}` — client dashboard docs (see contract v2).
-- `mfgRoles/{email}` (own collection) — portal roles.
+- `todolist`: `mike.items` [{id,text,cat,createdAt,due}] + `mike.notes`. `due` links a
+  task to a plan day; the task stays until checked off (`completeTodo`).
+- `template` per-person daily anchors/wrap-up.
+- `accounts` [{name,url,username}]. **NEVER passwords.**
+- `news`, `calendar` written by automations. `daywins` legacy streak data.
+- `mfg-client-{clientId}` client dashboard docs (contract v2.3). Side docs:
+  `mfg-client-{id}-notes` (listing notes), `-res-{period}` (reservation shards),
+  `-recs` (checklist state for Pricing Recommendations).
+- `mfg-finance-{year}` team-edited finance: `clients`, `wages`, `wageLabels`, `pnl`
+  (`expenses`, `labels`, `mileage`, `mileageRates`, `sep`, `home`, `homePct`, `homeDepr`,
+  `phoneFull`, `phonePct`). Feeds Revenue Tracking and the Company Overview P&L.
+- `mfgRoles/{email}` (own collection) portal roles.
 
 ## Client roster
 
@@ -47,18 +62,21 @@ Single source of truth: `CLIENTS` in `App.jsx` (portal uses the same list):
 panhandle PHG · bearcamp BCCR · killington TKG · haller HCH · nashville NVH · heights THH ·
 newwave NW · franmaxon FMRE · hodnett HC · kauai KREG · ohana OV · giantsridge VGR.
 To Do List adds realty RA and personal PERS. Adding a client = one line in `CLIENTS`.
+Nashville Vacation Homes leaves at the end of October 2026 (hidden from the Customer List
+and excluded from finance roll-forward from 2027; see `FIN_DEPARTED`, `PORTAL_TD_HIDDEN`).
 
 ## Design
 
 Navy `#003157`, red `#FF0013` (family), dark red `#B22234`/`#D31017` (portal), gold
 `#C8952C`, green `#2F6D54`, coral `#9E3B2F`, bg `#F4F5F7`. Fonts: Bricolage Grotesque +
-Inter. Goldfish motif is family-only.
+Inter. Goldfish motif is family-only. Portal width 1520; client dashboards 1100, or 1760
+when the doc sets `wide`.
 
 ## Automations
 
 - Deploy: GitHub Actions on push to main.
 - Shutdown reminder (3:25 PM weekdays) and news fetch (5:00 AM): dispatch-only workflows
-  rung externally by cron-job.org — GitHub cron is best-effort, so anything time-critical
+  rung externally by cron-job.org. GitHub cron is best-effort, so anything time-critical
   is triggered externally. Keep that pattern.
 - Calendar sync (`calendar-sync.yml`, every 30 min daytime ET): GitHub cron; misses
   self-heal. Writes `hub/calendar`.
@@ -67,33 +85,38 @@ Inter. Goldfish motif is family-only.
   repo). Never re-author the renderer in the task.
 - Repo secrets (names only): MAIL_USERNAME, MAIL_PASSWORD, MAIL_TO,
   FIREBASE_SERVICE_ACCOUNT, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN.
-- Headless print mode: `?print=<tabId>:<subtabIds>&portrait=<subtabIds>` renders a client
-  doc supplied as `window.__PRINT_DOC__` (no auth), one Letter page per subtab, using the
-  same print CSS as the Export PDF buttons. Driven by `company-hub/ohana/make_pdfs.py`
-  (local server over `dist/` + Edge `--print-to-pdf`) for the Monday emailed reports.
+- Every job across the hub is listed in `../ops/README.md`.
 
-## Portal state (Oct 2026)
+## Portal state (October 2026)
 
-- Team tabs: **Company Overview** (shell) · **Revenue Tracking** (live team-edited
-  `hub/mfg-finance-{year}` docs: received-basis revenue by client/month, AR
-  invoiced-vs-paid, projections, Gross Profit with per-employee wages; Mike's
-  template sheet seeded 2026) · **Customer List** (dashboard cards merged with
-  the shared `hub/todolist` — team reads, ONLY mike@fishergroup.co writes).
-- Client dashboards render contract v2/v2.1 sections (`tiles` `chart` `table`
-  `note` `listingTable` `kpiExplorer` `benchmark` `compsetList` `reservations`);
-  Bear Camp is fully built (writer: bearcamp-revenue repo, nightly). `demo` is a
-  static anonymized Bear Camp mirror for prospects. Listing notes live in
-  `hub/mfg-client-{id}-notes`; reservations in `-res-{period}` shard docs.
-- Client logins exist (Jessie Kasztelan → bearcamp). Browser tab title in the
+- Team tabs: **Company Overview** is a Profit and Loss statement by month with yearly
+  totals: Revenue, Cost of Services and Gross Profit from Revenue Tracking, per-year
+  expense rows (2025 as filed on Schedule C; 2026 a 12-row Schedule-C-aligned template),
+  auto-computed Car & Truck (mileage x IRS rate), Business Use of Home (Form 8829 inputs)
+  and Phone & Internet (business %), Mileage and SEP blocks, everything team-editable.
+  **Revenue Tracking** (`hub/mfg-finance-{year}`, 2025 onward): received-basis revenue by
+  client and month, AR invoiced vs paid, projections, Gross Profit with per-employee wages
+  as Cost of Services, five tiles including Gross Margin %, start-of-year roll-forward.
+  **Customer List**: dashboard cards merged with the shared `hub/todolist` (team reads,
+  ONLY mike@fishergroup.co writes); the client name opens the dashboard. Export PDF
+  buttons on Company Overview and Revenue Tracking.
+- Client dashboards render contract v2.3: `tiles` `chart` `table` `note` `listingTable`
+  `kpiExplorer` `benchmark` `compsetList` `reservations` `monthlyCompare` `checklist`
+  `heading`, with tabs and subtabs, `exportPdf`, `wide`, and the table/row flags listed in
+  the contract. Built and live: Bear Camp (writer: bearcamp-revenue repo, nightly), Ohana
+  (company-hub/ohana, Monday), Villas at Giants Ridge (company-hub/giantsridge, weekly).
+  `demo` is a static anonymized Bear Camp mirror for prospects. Browser tab title in the
   portal is "Mike Fisher Group".
 
 ## Roadmap
 
-1. Company Overview engine (received-basis revenue → Gross Profit/Margin MoM —
-   Revenue Tracking now holds the data).
-2. More client dashboard writers (Bear Camp is the reference implementation).
-3. Financials Phase 1 (family, Monarch CSV).
-4. Deferred: SMS, Plaid, in-app AI brief, in-portal access manager, streak display.
+1. Split `App.jsx` into modules (own change), then the family-app overhaul.
+2. Personal finance phase 1 in the family face (see `../personal/CLAUDE.md`), on its own
+   collections and rules.
+3. Custom domain for Pages (for example hub.fishergroup.co) so the product name is free
+   of the repo name.
+4. More client dashboard writers (Bear Camp is the reference implementation).
+5. Deferred: SMS, Plaid, in-app AI brief, in-portal access manager, streak display.
 
 ## Working conventions
 
@@ -102,4 +125,6 @@ Inter. Goldfish motif is family-only.
 - Never store passwords in the app; secrets only in GitHub Actions secrets / env vars.
   Never commit or print a service account.
 - Do not weaken `firestore.rules`.
+- Verify UI changes in the browser (the temporary bypass pattern: copy a doc to
+  `docs/sample-client-dashboard.json`, preview, revert before committing).
 - Push back on bad ideas; honest tradeoffs over hype.

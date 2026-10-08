@@ -1,4 +1,72 @@
-# Fisher Family Hub — Project Context (current as of Sept 15, 2026)
+# Fisher Family Hub: Project Context (current as of Sept 15, 2026)
+
+> **Status update (2026-10-07).** This is a dated snapshot and is superseded in part. The
+> current truth is `CLAUDE.md` in this repo (where this file and `CLAUDE.md` differ,
+> `CLAUDE.md` wins); the dashboard schema is `docs/client-dashboard-contract-v2.md` (v2.3);
+> every scheduled job is registered in `../ops/README.md`. The body below is left as written
+> on Sept 15. These points in it are now out of date:
+>
+> - App size: `src/App.jsx` is about 4,540 lines as of Oct 2026, not ~2,700.
+> - Portal login: the login box takes an email or a plain username; a username maps to
+>   `{name}@fisherhub.local`, and a shared `ohana` client login (role client, clientId
+>   ohana) exists for the whole Ohana team. See `CLAUDE.md`, Auth model.
+> - Firestore docs: besides `mfg-client-{clientId}` (contract v2.3), the `hub` collection
+>   holds the companion docs `mfg-client-{id}-notes` (listing notes), `-res-{period}`
+>   (reservation shards) and `-recs` (checklist done-state via a section's `stateDoc`,
+>   Giants Ridge first), plus the team-only `mfg-finance-{year}` docs that feed Revenue
+>   Tracking and the Company Overview P&L rows under `pnl`. See `CLAUDE.md`, Firestore data.
+> - Roster: `CLIENTS` also carries `demo` DEMO (anonymized Bear Camp mirror for prospects;
+>   portal only, never a To Do List category), and the To Do List also has `164apr` 164APR
+>   (blue). Nashville is a client through Oct 2026: its Customer List card is hidden
+>   (`PORTAL_TD_HIDDEN`) and it is excluded from the start-of-year Revenue Tracking
+>   roll-forward from 2027 (`FIN_DEPARTED`); it stays in `CLIENTS` so history is untouched.
+> - Portal tabs: the team sees Company Overview (Profit and Loss by month with yearly
+>   totals; revenue, cost of services and gross profit flow from Revenue Tracking; 2025 per
+>   the filed Schedule C, 2026 a 12-row Schedule-C template with auto-computed Car & Truck,
+>   Business Use of Home and Phone & Internet; Mileage and SEP blocks; all team-editable),
+>   Revenue Tracking (`hub/mfg-finance-{year}`; 2025 seeded from Mike's sheet, 2024 removed;
+>   five tiles incl. Gross Margin % and Gross Profit; start-of-year roll-forward excludes
+>   departed clients) and Customer List (dashboard cards merged with the shared
+>   `hub/todolist`; the client name opens `?portal=mfg&client={id}`; team reads, only
+>   mike@fishergroup.co writes). There are no Portfolio Overview or Customer Dashboards
+>   tabs. Export PDF buttons sit top right on Company Overview and Revenue Tracking; portal
+>   width is 1520. See `CLAUDE.md`, Portal state.
+> - Dashboards are built, not placeholders: one generic renderer for contract v2.3
+>   documents (`tiles` `chart` `table` `note` `heading` `listingTable` `kpiExplorer`
+>   `monthlyCompare` `checklist` `benchmark` `compset` `compsetList` `reservations`);
+>   `exportPdf: true` on a tab or subtab adds an Export PDF button (browser print, one
+>   landscape Letter page). Headless print mode
+>   `?print=<tabId>:<subtabIds>&portrait=<subtabIds>` renders a doc supplied as
+>   `window.__PRINT_DOC__` with no auth, one Letter page per subtab, sharing the print CSS
+>   via `ensurePrintCss()`; `company-hub/ohana/make_pdfs.py` drives it for the Monday
+>   emailed PDFs. Writers live outside this repo: bearcamp-revenue (nightly),
+>   company-hub/ohana (Monday, Hostaway API), company-hub/giantsridge (weekly, manual,
+>   WebRezPro exports).
+> - Automation script paths: the scripts are `.github/scripts/news-fetch.mjs` and
+>   `.github/scripts/calendar-sync.mjs` (there is no top-level `scripts/` folder).
+>   `news-fetch.yml` is not dispatch-only: it carries its own GitHub cron (`0 9 * * *` UTC
+>   = 5 AM EDT; the comment says switch to `0 10` for winter) plus workflow_dispatch, and
+>   `../ops/README.md` records that cron-job.org also rings it.
+> - Roadmap item 1 is done: the renderer ships contract v2.3 (v2.1 interactive sections
+>   2026-09-23; v2.2 doc-level `wide`, table flags and Export PDF 2026-10-05; v2.3
+>   monthlyCompare, grouped headers, checklist, heading, chart series `hidden` and
+>   `pointLabels` 2026-10-06/07). Roadmap item 2 is done as data entry rather than a
+>   contracts/MRR engine: Revenue
+>   Tracking holds received-basis revenue by client/month (billed in arrears: August
+>   services land in September), AR, cost of services (Aida, Rachel, Jaimee wages) and
+>   Gross Profit $ / Gross Margin % MoM, the north star; Company Overview is the P&L by
+>   month on top of it. A contracts to price-per-listing to MRR projection layer remains
+>   open if still wanted. Current roadmap: `CLAUDE.md`, Roadmap.
+> - Working conventions: the Claude Code project root is
+>   `C:/Users/mfish/Desktop/claude/projects` (root CLAUDE.md = standing rules + map;
+>   `ops/README.md` = registry of every scheduled job); this repo is the `fisherfamilyhub`
+>   sub-project beside `company-hub` (client dashboard writers), `fishergroup-site` and
+>   `personal`. Standing rules: never read a sheet's Logins tab; never invent data or fill
+>   gaps silently; no em dashes in anything written; api/, data/ and out/ are never
+>   committed; secrets live only in `C:\Users\mfish\.hub-secrets\` (the hub app's own
+>   secrets stay GitHub Actions secrets). Commits end with
+>   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. Claude in the chat project
+>   is still the design/spec partner; Code writes code.
 
 Read this before touching anything. It is the source of truth for how the hub is built
 and how work on it happens now.

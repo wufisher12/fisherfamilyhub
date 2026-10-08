@@ -1,4 +1,4 @@
-# Client dashboard contract — layout-as-data (v2)
+# Client dashboard contract: layout-as-data (v2, amended through v2.3 on 2026-10-07)
 
 Supersedes the fixed-shape brief. Each client's dashboard project computes its numbers
 and writes ONE self-describing document to Firestore; the Fisher Family Hub renders it
@@ -8,9 +8,18 @@ every client can differ. Look, colors, and typography are owned by the hub.
 ## Target
 - Firebase project `fisher-family-hub`, document `hub/mfg-client-{clientId}`
 - clientId is one of: panhandle, bearcamp, killington, haller, nashville, heights,
-  newwave, franmaxon, hodnett, kauai, ohana, giantsridge
-- Write with the Firebase Admin SDK using a service account from an env var / CI secret.
-  Never commit or print it. Write only this document; never touch other `hub` docs.
+  newwave, franmaxon, hodnett, kauai, ohana, giantsridge. (`CLIENTS` in App.jsx also
+  carries `demo`, a static anonymized Bear Camp mirror for prospects: portal-only, never a
+  To Do List category, refreshed only when the Bear Camp writer is run with `--with-demo`.)
+  nashville leaves at the end of October 2026.
+- Write through the Firestore REST API (a PATCH of the whole document) authenticated with a
+  service-account JSON whose path comes from the `FIREBASE_SERVICE_ACCOUNT` env var (default
+  `~/.hub-secrets/firebase-sa.json`; the Bear Camp writer still defaults to `data/firebase-sa.json`).
+  Never commit or print it. Write only this document and its own `mfg-client-{clientId}-...`
+  companions (reservation shards; the checklist state doc is read, not written; the notes doc is
+  written by the hub, not the writer). Never touch another client's docs or any non-`mfg-` doc.
+  The one sanctioned exception is the Bear Camp writer's on-demand `--with-demo` flag, which
+  refreshes the `demo` mirror (`mfg-client-demo` and its shards).
 
 ## Document
 ```json
@@ -61,8 +70,8 @@ every client can differ. Look, colors, and typography are owned by the hub.
 ```
 
 ## Rules
-- Section `type` is one of: `tiles`, `chart`, `table`, `note`, plus the v2.1
-  interactive types below. Anything else is ignored.
+- Section `type` is one of: `tiles`, `chart`, `table`, `note`, `heading` (v2.3), plus the v2.1
+  interactive types below and the v2.3 `monthlyCompare` and `checklist`. Anything else is ignored.
 - **v2.1 interactive sections** (2026-09-23, Bear Camp first):
   - `listingTable` — `{summary:{total,byBedrooms}, rows:[{id,name,url,city,
     mapsUrl,bedrooms,absMin,whUrl,tags[]}], notesDoc, note}`. The hub renders
@@ -97,18 +106,32 @@ every client can differ. Look, colors, and typography are owned by the hub.
 - Table rows are maps, `{"cells": [...]}` — **Firestore rejects arrays nested
   directly inside arrays**, so `[[...], [...]]` can never be stored (amended
   2026-09-15; the hub renderer accepts both shapes for JSON-side previews).
-- `chart.kind` is `line` or `bar`. `format` is `currency`, `percent`, or `number`.
-- `value` and `delta` are pre-formatted display strings; the hub never does math.
+- `chart.kind` is `line` or `bar`. `format` is `currency`, `percent`, or `number`. A series may
+  carry `hidden: true` (starts hidden; one legend click reveals it). A `line` chart may set
+  `pointLabels: true` (v2.3): each marker gets its value as a label, above the line for the
+  first visible series and below for the next, so close lines do not collide.
+- `value` and `delta` are pre-formatted display strings; the hub does no math on them. The
+  interactive types that ship raw components (`kpiExplorer`, `reservations`, `monthlyCompare`)
+  compute their own derived values client-side by design.
 - `dir` is `up` / `down` / `flat` and means "is this good news," not the sign.
-- Tabs render in array order; the first tab is the default. Empty `sections` renders
-  a "coming soon" state. Max ~8 tabs, ~6 sections per tab, document under ~200KB.
+- Tabs render in array order; the first tab is the default. A tab may carry
+  `subtabs: [{id, label, sections, exportPdf}]` instead of `sections` (v2.2, Ohana first): the hub
+  shows a chip row under the tab bar, the first subtab is the default and the choice is remembered
+  per tab. Empty `sections` renders a "coming soon" state. Max ~8 tabs, ~6 sections per tab or
+  subtab, document under ~200KB.
 - Write the whole document each run (last write wins). Idempotent for the same day.
-- Schedule nightly in CI with a manual trigger; log one line describing what was written.
+- No writer runs in CI today. Scheduled writers run under Windows Task Scheduler on Mike's PC
+  ("BearCamp Nightly Collect" daily 3:00 AM, "Ohana Monday Run" Mondays 7:00 AM Eastern);
+  Giants Ridge is published by hand after the weekly WebRezPro exports land. Register every
+  scheduled job in the projects-root `ops/README.md` the moment it is created. Keep a manual
+  run path; log one line describing what was written.
 
 ## Why this split
 Writer owns *what* (metrics, tabs, wording). Hub owns *how it looks*. Adding a KPI or a
 tab to a client is a writer-side change; adding a new section type is a hub-side change.
-Client logins (via the hub's roles) can read only their own document — already enforced.
+Client logins (via the hub's roles) can read only their own document and its
+`mfg-client-{clientId}-...` companions (the rules also let them write those docs, which the
+listing-notes feature relies on), already enforced.
 
 ## v2.2 additions (2026-10-05, first user: Ohana)
 
@@ -133,18 +156,31 @@ Client logins (via the hub's roles) can read only their own document — already
   "Export PDF" button, which prints just that tab's sections as one
   landscape Letter page (browser print-to-PDF; nav and controls hidden, a
   print-only title line with client, tab and as-of date added).
+- Amendment 3 (2026-10-07, commit cef5954): headless print mode.
+  `?print=<tabId>:<subtabId,subtabId>&portrait=<subtabIds>` renders a doc supplied by the host
+  page as `window.__PRINT_DOC__` with no auth and no Firestore, one Letter page per requested
+  subtab (the whole tab as one page when it has no subtabs; landscape unless the subtab id is
+  listed in `portrait`), each block zoomed down to fit its page, with the print-only title line;
+  `window.__PRINT_READY__` is set once laid out. The print stylesheet is shared with the Export
+  PDF buttons via `ensurePrintCss()`. Used by `company-hub/ohana/make_pdfs.py` (local server
+  over `dist/`, Edge `--print-to-pdf`) for the Monday emailed reports.
 
 ## v2.3 addition (2026-10-06, first user: Giants Ridge)
 
 - `monthlyCompare` — interactive year-over-year explorer. The doc ships
-  per-year monthly data: `years: {"2026": {final: {rent[12], paid[12],
-  owner[12], avail[12]}, cut1/cut2/cut3: {rent[12], paid[12]}}}` where
+  per-year monthly data: `years: {"2026": {final: {rent[12], paid[12], owner[12], avail[12]},
+  cutK: {rent[12], paid[12]}, cut14d: {rent[12], paid[12]}}}`. `cut14d` (optional) is the
+  year's position 14 days before asOf and feeds the 14-day Pickup series. There is one `cutK`
+  for every year gap the `cyOptions` x `compOptions` pairs can produce (the hub reads
+  `"cut" + (cy - comp)`; Giants Ridge ships cut1..cut4), where
   `cutK` is the year's position with bookings made on or before (asOf
   minus K years). Plus `asOf`, `defaultCy`, `defaultComp`, `cyOptions`,
   `compOptions`. The hub renders filter chips (view year, compare-vs year,
   basis Same-time-LY vs Final, month range with a Full Year reset) and
-  recomputes the KPI tiles, a line chart (CY, comp STLY, comp final) and
-  the monthly grid client-side.
+  recomputes the KPI tiles (Rent, Paid Unit-Nights, ADR, Paid Occupancy, Owner Nights), a line
+  chart and the grouped monthly grid client-side. The chart has a Rent / ADR / Occupancy selector,
+  point labels on, and up to four series: CY, "14-day Pickup" (from `cut14d`, hidden by default),
+  comp STLY, and comp final (hidden by default; a legend click reveals it).
 - Amendment (2026-10-06): `table` sections accept `groups` ([{label, span}],
   a centered grouped-header row with separators at group boundaries) and
   `firstColWidth`. New section type `checklist`: {title, stateDoc, rows:
@@ -156,4 +192,6 @@ Client logins (via the hub's roles) can read only their own document — already
   font size in px). `note` sections accept `style: "footnote"` (small
   italic charcoal text, no box). New section type `heading`: {text, sub}
   renders a large section title with an optional smaller italic definition
-  line, to introduce a block of sections.
+  line, to introduce a block of sections. Separately, `tiles` sections accept
+  `titleStyle: "heading"`, which renders the section's own title as a large blue title
+  (20px, #1F6FB2) instead of the small uppercase caption.
