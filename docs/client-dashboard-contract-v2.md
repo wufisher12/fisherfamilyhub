@@ -1,4 +1,4 @@
-# Client dashboard contract: layout-as-data (v2, amended through v2.3 on 2026-10-07)
+# Client dashboard contract: layout-as-data (v2, amended through v2.4 on 2026-10-08)
 
 Supersedes the fixed-shape brief. Each client's dashboard project computes its numbers
 and writes ONE self-describing document to Firestore; the Fisher Family Hub renders it
@@ -71,7 +71,8 @@ every client can differ. Look, colors, and typography are owned by the hub.
 
 ## Rules
 - Section `type` is one of: `tiles`, `chart`, `table`, `note`, `heading` (v2.3), plus the v2.1
-  interactive types below and the v2.3 `monthlyCompare` and `checklist`. Anything else is ignored.
+  interactive types below, the v2.3 `monthlyCompare` and `checklist`, and the v2.4 `block`.
+  Anything else is ignored.
 - **v2.1 interactive sections** (2026-09-23, Bear Camp first):
   - `listingTable` — `{summary:{total,byBedrooms}, rows:[{id,name,url,city,
     mapsUrl,bedrooms,absMin,whUrl,tags[]}], notesDoc, note}`. The hub renders
@@ -115,7 +116,7 @@ every client can differ. Look, colors, and typography are owned by the hub.
   compute their own derived values client-side by design.
 - `dir` is `up` / `down` / `flat` and means "is this good news," not the sign.
 - Tabs render in array order; the first tab is the default. A tab may carry
-  `subtabs: [{id, label, sections, exportPdf}]` instead of `sections` (v2.2, Ohana first): the hub
+  `subtabs: [{id, label, sections, exportPdf, wide}]` instead of `sections` (v2.2, Ohana first): the hub
   shows a chip row under the tab bar, the first subtab is the default and the choice is remembered
   per tab. Empty `sections` renders a "coming soon" state. Max ~8 tabs, ~6 sections per tab or
   subtab, document under ~200KB.
@@ -195,3 +196,72 @@ listing-notes feature relies on), already enforced.
   line, to introduce a block of sections. Separately, `tiles` sections accept
   `titleStyle: "heading"`, which renders the section's own title as a large blue title
   (20px, #1F6FB2) instead of the small uppercase caption.
+
+## v2.4 additions (2026-10-08, first user: Bear Camp)
+
+Everything below is opt-in: a doc that uses none of it renders as before. The one exception
+is the kpiExplorer filter and chart-grid styling (third bullet), which applies to every
+kpiExplorer; only Bear Camp and its `demo` mirror use that section type.
+
+- **Width per tab.** `wide` may sit on the doc (as in v2.2), on a tab, or on a subtab.
+  `true` = the 1760px cap; `"full"` = no cap: the content fills the window, keeping the
+  existing 20px side padding. The content column takes the first `wide` defined on the active
+  subtab, then the tab, then the doc (`false` counts as defined and means 1100px); none
+  defined = 1100px. The dark header bar (client name and tab strip) takes the widest width
+  used anywhere in the doc (doc, any tab, any subtab), so it does not jump when switching
+  tabs; a narrower tab centers its column under it. Print is unaffected (the header bar never
+  prints).
+- **kpiExplorer** accepts four optional fields:
+  - `title`: the section opens with a header row. Left: the title (26px, weight 800,
+    Bricolage Grotesque, navy) with `sub` under it (12.5px italic, #4A5560). Right: the
+    Bedrooms and Tags filter rows. The row wraps, so on a narrow screen the filters drop under
+    the title.
+  - `sub`: the one-line description under `title` (ignored without `title`).
+  - `pointLabels: true`: every chart point carries its value (the v2.3 chart feature: above
+    the marker for the first visible series, below for the next).
+  - `chartSize: "large"`: taller charts (viewBox height 330 instead of 250, with a little
+    more top headroom so the highest label is not clipped) and 10.5px point labels instead of
+    8.5px. Point labels are placed by value: at each point the highest visible value is
+    labeled above its marker and the others below, so close lines push their labels apart.
+    Chart width already follows the column.
+- **kpiExplorer styling, every doc:** the filters sit directly on the page at the top of the
+  section with no card around them, styled black: uppercase labels in black (weight 800);
+  chips with a 1.5px black border and black text on white; a selected chip is black with
+  white text. The charts are exactly two per row on desktop (980px and wider) at any content
+  width, one per row below that. The KPI tiles row is unchanged. The black chips are opt-in
+  on the shared chip helpers (`MfgChipRow tone="black"`, `MFG_CHIP(on, "black")`), so the
+  listingTable, reservations and other filters keep their existing look.
+- **New section type `block`**: a literal bordered box for narrative or tabular content.
+  ```json
+  { "type": "block",
+    "title": "Listings to Monitor",
+    "sub": "Next 60 Days vs STLY, underperforming units",
+    "paragraphs": ["Bear Camp picked up **+3.2 pts** last week.", "..."],
+    "bullets": ["...", "..."],
+    "table": { "columns": [], "rows": [{ "cells": [] }], "groups": [], "dense": true },
+    "note": "Definitions and caveats, rendered as a footnote.",
+    "views": [
+      { "id": "2026-10-05", "label": "10.05.2026", "sub": "...", "paragraphs": [],
+        "bullets": [], "table": {}, "note": "...",
+        "empty": "Text shown when this view has no table rows." }
+    ] }
+  ```
+  - `title` is required; every other field is optional. `table` takes a `table` section's
+    fields (`columns`, `rows` as `{"cells": [...]}` maps, `groups`, `dense`, `headerFill`,
+    `center`, `textSize`, `stickyFirst`, `sortable`, `nowrapFirst`, `firstColWidth`, cell
+    tones and links) and renders exactly like a table section but without its own card, 12px
+    below the text, with horizontal scroll kept.
+  - The box: white, 2px solid black border, 4px radius, 20px by 24px padding, 18px below,
+    full width of the content column. Title 20px weight 800 black (Bricolage Grotesque);
+    `sub` 13px italic #4A5560 under it. Paragraphs and bullets 14px, #10181F, line height
+    1.6, 10px apart. `note` renders as a footnote (11.5px italic #4A5560).
+  - Inline `**bold**` inside `paragraphs` and `bullets` strings renders bold. Nothing else is
+    interpreted: every string is plain text (no HTML, no links).
+  - `views`: a row of tab buttons at the TOP of the box, above the title, one per view in
+    array order, each needing `id` and `label`; the first is selected by default. Active tab:
+    black fill, white text; inactive: white with a 1.5px black border and black text (4px
+    radius). The selected view's `paragraphs`, `bullets`, `table` and `note` replace the
+    block-level ones (block-level content is not shown while views exist); a view's `sub`
+    replaces the block `sub` when present. A view's `empty` text renders muted (13px) in
+    place of the table when the view has a table with zero rows, or when it has no table and
+    no paragraphs.

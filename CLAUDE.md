@@ -7,7 +7,7 @@ secrets only in `~/.hub-secrets/`, commit trailer).
 
 Context snapshot: [docs/fisher-hub-context-sept-2026.md](docs/fisher-hub-context-sept-2026.md)
 (dated; this file wins where they differ).
-Client dashboard schema: [docs/client-dashboard-contract-v2.md](docs/client-dashboard-contract-v2.md) (v2.3).
+Client dashboard schema: [docs/client-dashboard-contract-v2.md](docs/client-dashboard-contract-v2.md) (v2.4).
 
 ## Stack & layout
 
@@ -25,7 +25,7 @@ Client dashboard schema: [docs/client-dashboard-contract-v2.md](docs/client-dash
   - `src/shared/dashboard/` the contract renderer: `Section.jsx` dispatches on section
     type to `ui.jsx` (tiles, note, heading, chips, card styles), `Chart`, `Table`,
     `ListingTable`, `KpiExplorer`, `Benchmark`, `Reservations`, `Compset`,
-    `MonthlyCompare`, `Checklist`; `print.js` (`ensurePrintCss`) and `PrintScreen.jsx`.
+    `MonthlyCompare`, `Checklist`, `Block`; `print.js` (`ensurePrintCss`) and `PrintScreen.jsx`.
   - `src/lib/` cross-cutting: `firebase.js`, `theme.js` (`T`, `MFG_RED`), `clients.js`
     (the `CLIENTS` roster and To Do List categories), `dates.js`, `format.js`, `hooks.js`
     (`useIsWide`, `useHubDoc`, `useMfgHubDoc`), `params.js` (URL params read once).
@@ -63,7 +63,7 @@ the same print stylesheet as the Export PDF buttons (`ensurePrintCss`). Driven b
 - `template` per-person daily anchors/wrap-up.
 - `accounts` [{name,url,username}]. **NEVER passwords.**
 - `news`, `calendar` written by automations. `daywins` legacy streak data.
-- `mfg-client-{clientId}` client dashboard docs (contract v2.3). Side docs:
+- `mfg-client-{clientId}` client dashboard docs (contract v2.4). Side docs:
   `mfg-client-{id}-notes` (listing notes), `-res-{period}` (reservation shards),
   `-recs` (checklist state for Pricing Recommendations).
 - `mfg-finance-{year}` team-edited finance: `clients`, `wages`, `wageLabels`, `pnl`
@@ -84,8 +84,9 @@ and excluded from finance roll-forward from 2027; see `FIN_DEPARTED`, `PORTAL_TD
 
 Navy `#003157`, red `#FF0013` (family), dark red `#B22234`/`#D31017` (portal), gold
 `#C8952C`, green `#2F6D54`, coral `#9E3B2F`, bg `#F4F5F7`. Fonts: Bricolage Grotesque +
-Inter. Goldfish motif is family-only. Portal width 1520; client dashboards 1100, or 1760
-when the doc sets `wide`.
+Inter. Goldfish motif is family-only. Portal width 1520; client dashboards 1100, 1760 with
+`wide: true`, or the full window with `wide: "full"`; `wide` may sit on the doc, a tab or a
+subtab (the most specific wins), and the header bar takes the widest width in the doc.
 
 ## Automations
 
@@ -115,10 +116,10 @@ when the doc sets `wide`.
   **Customer List**: dashboard cards merged with the shared `hub/todolist` (team reads,
   ONLY mike@fishergroup.co writes); the client name opens the dashboard. Export PDF
   buttons on Company Overview and Revenue Tracking.
-- Client dashboards render contract v2.3: `tiles` `chart` `table` `note` `listingTable`
+- Client dashboards render contract v2.4: `tiles` `chart` `table` `note` `listingTable`
   `kpiExplorer` `benchmark` `compsetList` `reservations` `monthlyCompare` `checklist`
-  `heading`, with tabs and subtabs, `exportPdf`, `wide`, and the table/row flags listed in
-  the contract. Built and live: Bear Camp (writer: company-hub/bear-camp/bearcamp-revenue, nightly), Ohana
+  `heading` `block`, with tabs and subtabs, `exportPdf`, `wide` (doc, tab or subtab), and
+  the table/row flags listed in the contract. Built and live: Bear Camp (writer: company-hub/bear-camp/bearcamp-revenue, nightly), Ohana
   (company-hub/ohana, Monday), Villas at Giants Ridge (company-hub/giantsridge, weekly).
   `demo` is a static anonymized Bear Camp mirror for prospects. Browser tab title in the
   portal is "Mike Fisher Group".
