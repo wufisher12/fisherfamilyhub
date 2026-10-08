@@ -8,11 +8,12 @@ import { MfgReservationsSection } from "./Reservations.jsx";
 import { MfgCompsetListSection, MfgCompsetSection } from "./Compset.jsx";
 import { MfgMonthlyCompareSection } from "./MonthlyCompare.jsx";
 import { MfgChecklistSection } from "./Checklist.jsx";
+import { MfgBlockSection } from "./Block.jsx";
 
 /* ------------------------------------------------------------------ */
-/*  Client dashboard renderer — docs/client-dashboard-contract-v2.md   */
+/*  Client dashboard renderer: docs/client-dashboard-contract-v2.md    */
 /*  Writers own WHAT (tabs/sections/values, pre-formatted strings);    */
-/*  this code owns HOW IT LOOKS. Section types: tiles/chart/table/note.*/
+/*  this code owns HOW IT LOOKS. One branch per section type below.    */
 /* ------------------------------------------------------------------ */
 
 // Unknown section types are ignored per the contract.
@@ -32,5 +33,6 @@ export function MfgSection({ section, userEmail, isTeam }) {
   if (section.type === "compset") return <MfgCompsetSection section={section} />;
   if (section.type === "compsetList") return <MfgCompsetListSection section={section} />;
   if (section.type === "reservations") return <MfgReservationsSection section={section} isTeam={isTeam} />;
+  if (section.type === "block") return <MfgBlockSection section={section} />;
   return null;
 }

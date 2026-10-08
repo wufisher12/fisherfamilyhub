@@ -3,7 +3,10 @@ import { T } from "../../lib/theme.js";
 import { tableCellNumber } from "../../lib/format.js";
 import { MfgSectionTitle } from "./ui.jsx";
 
-export function MfgTableSection({ section }) {
+// bare (v2.4): no card chrome (background, border, radius, padding, outer
+// margin) for a table that sits inside another container such as a block;
+// horizontal scroll is kept.
+export function MfgTableSection({ section, bare }) {
   const columns = Array.isArray(section.columns) ? section.columns : [];
   // Opt-in styling flags from the doc (contract v2.2). Defaults keep every
   // existing dashboard's tables exactly as they were.
@@ -51,7 +54,9 @@ export function MfgTableSection({ section }) {
     boxShadow: `2px 0 0 ${T.line}`, minWidth: firstW,
   });
   return (
-    <div className="mfg-table-card" style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
+    <div className="mfg-table-card" style={bare
+      ? { overflowX: "auto" }
+      : { background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16, overflowX: "auto" }}>
       {section.title && <MfgSectionTitle>{section.title}</MfgSectionTitle>}
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
