@@ -72,22 +72,30 @@ export function MfgHeadingSection({ section }) {
 /*  Interactive client-dashboard sections (contract v2.1)              */
 /* ------------------------------------------------------------------ */
 export const MFG_CARD = { background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16 };
-export const MFG_CHIP = (on) => ({
-  border: `1.5px solid ${on ? T.ink : T.line}`, background: on ? T.ink : "#fff",
-  color: on ? "#fff" : T.inkSoft, borderRadius: 999, padding: "4px 12px",
-  fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
-});
+// tone "black" (v2.4, opt-in): black outline and text on white, black fill
+// with white text when selected. Callers that pass no tone are unchanged.
+export const MFG_CHIP = (on, tone) => (tone === "black"
+  ? {
+      border: "1.5px solid #000", background: on ? "#000" : "#fff",
+      color: on ? "#fff" : "#000", borderRadius: 999, padding: "4px 12px",
+      fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+    }
+  : {
+      border: `1.5px solid ${on ? T.ink : T.line}`, background: on ? T.ink : "#fff",
+      color: on ? "#fff" : T.inkSoft, borderRadius: 999, padding: "4px 12px",
+      fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+    });
 export const MFG_INPUT = {
   border: `1.5px solid ${T.line}`, borderRadius: 10, padding: "7px 11px",
   fontSize: 13, outline: "none", background: "#fff", color: T.ink, fontFamily: "Inter, sans-serif",
 };
 
-export function MfgChipRow({ label, options, sel, setSel }) {
+export function MfgChipRow({ label, options, sel, setSel, tone }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em", marginRight: 2 }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 800, color: tone === "black" ? "#000" : T.inkSoft, textTransform: "uppercase", letterSpacing: "0.05em", marginRight: 2 }}>{label}</span>
       {options.map((o) => (
-        <button key={o} onClick={() => setSel((s) => ({ ...s, [o]: !s[o] }))} style={MFG_CHIP(!!sel[o])}>{o}</button>
+        <button key={o} onClick={() => setSel((s) => ({ ...s, [o]: !s[o] }))} style={MFG_CHIP(!!sel[o], tone)}>{o}</button>
       ))}
     </div>
   );

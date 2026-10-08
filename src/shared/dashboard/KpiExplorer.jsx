@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { T } from "../../lib/theme.js";
 import { fmtKpi } from "../../lib/format.js";
+import { useIsWide } from "../../lib/hooks.js";
 import { MFG_CARD, MfgChipRow, MfgNoteSection } from "./ui.jsx";
 import { MfgChartSection } from "./Chart.jsx";
 
@@ -20,6 +21,7 @@ function evalKpi(expr, c, idx) {
 }
 
 export function MfgKpiExplorerSection({ section }) {
+  const isWide = useIsWide();
   const [brSel, setBrSel] = useState({});
   const [tagSel, setTagSel] = useState({});
   const groups = Array.isArray(section.groups) ? section.groups : [];
@@ -43,6 +45,7 @@ export function MfgKpiExplorerSection({ section }) {
 
   const chartOf = (kpi) => ({
     type: "chart", kind: "line", title: kpi.label, format: kpi.format,
+    pointLabels: !!section.pointLabels,
     xLabels: periods,
     series: [
       { name: "This year", values: periods.map((_, i) => scale(evalKpi(kpi.expr, cur, i), kpi.format)) },
@@ -51,12 +54,30 @@ export function MfgKpiExplorerSection({ section }) {
   });
   const scale = (v, format) => (v == null ? null : format === "percent" ? Math.round(v * 1000) / 10 : Math.round(v * 100) / 100);
 
+  // Filters (v2.4): black chips sitting on the page background, no card.
+  const filters = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <MfgChipRow tone="black" label="Bedrooms" options={section.filters?.bedrooms || []} sel={brSel} setSel={setBrSel} />
+      <MfgChipRow tone="black" label="Tags" options={section.filters?.tags || []} sel={tagSel} setSel={setTagSel} />
+    </div>
+  );
+
   return (
     <div>
-      <div style={{ ...MFG_CARD, display: "flex", flexDirection: "column", gap: 10 }}>
-        <MfgChipRow label="Bedrooms" options={section.filters?.bedrooms || []} sel={brSel} setSel={setBrSel} />
-        <MfgChipRow label="Tags" options={section.filters?.tags || []} sel={tagSel} setSel={setTagSel} />
-      </div>
+      {/* With a title (v2.4) the section opens with a header row: title and
+          sub on the left, filters on the right; on narrow screens the
+          filters wrap under the title. Without one, just the filters. */}
+      {section.title ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: T.ink, fontFamily: "'Bricolage Grotesque', sans-serif", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{section.title}</div>
+            {section.sub && <div style={{ fontSize: 12.5, color: "#4A5560", fontStyle: "italic", marginTop: 3 }}>{section.sub}</div>}
+          </div>
+          {filters}
+        </div>
+      ) : (
+        <div style={{ marginBottom: 14 }}>{filters}</div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 16 }}>
         {(section.kpis || []).map((k) => {
           const c = evalKpi(k.expr, cur, null), l = evalKpi(k.expr, ly, null);
@@ -75,10 +96,11 @@ export function MfgKpiExplorerSection({ section }) {
           );
         })}
       </div>
-      {/* Two charts per row on desktop, one on narrow screens. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 14, marginBottom: 16 }}>
+      {/* Exactly two charts per row on desktop at any content width, one on
+          narrow screens. chartSize "large" (v2.4) makes each plot taller. */}
+      <div style={{ display: "grid", gridTemplateColumns: isWide ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)", gap: 14, marginBottom: 16 }}>
         {(section.kpis || []).filter((k) => k.expr !== "count").map((k) => (
-          <MfgChartSection key={k.label} compact section={chartOf(k)} />
+          <MfgChartSection key={k.label} compact size={section.chartSize === "large" ? "large" : undefined} section={chartOf(k)} />
         ))}
       </div>
       {section.note && <MfgNoteSection section={{ text: section.note }} />}

@@ -7,7 +7,10 @@ import { MfgSectionTitle } from "./ui.jsx";
 // the brand family and validated colorblind-safe + >=3:1 on white.
 export const MFG_SERIES = ["#1F6FB2", "#A87415", "#7A4FA3", "#B0402F"];
 
-export function MfgChartSection({ section, seriesStyles, compact }) {
+// size "large" (v2.4, KPI explorer `chartSize`): a taller plot (viewBox
+// height 330) with larger, value-placed point labels and more headroom so the
+// label above the highest marker is not clipped. Omitted = unchanged.
+export function MfgChartSection({ section, seriesStyles, compact, size }) {
   const [hover, setHover] = useState(null);
   // Click a legend entry to hide/show that series. A series may start
   // hidden via its own `hidden: true` flag (one click reveals it).
@@ -37,7 +40,8 @@ export function MfgChartSection({ section, seriesStyles, compact }) {
   }
 
   const isLine = section.kind === "line";
-  const W = 640, H = compact ? 250 : 240, padL = 48, padR = 10, padT = 10, padB = 26;
+  const large = size === "large";
+  const W = 640, H = large ? 330 : compact ? 250 : 240, padL = 48, padR = 10, padT = large ? 22 : 10, padB = 26;
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const scaleSet = visible.length ? visible : series.map((s, i) => ({ s, i }));
   const all = scaleSet.flatMap(({ s }) => s.values).filter((v) => typeof v === "number" && isFinite(v));
@@ -45,6 +49,19 @@ export function MfgChartSection({ section, seriesStyles, compact }) {
   const max = niceCeil(Math.max(1e-9, ...all)) || 1;
   const min = rawMin < 0 ? -niceCeil(-rawMin) : 0;
   const y = (v) => padT + innerH * (1 - (v - min) / (max - min));
+  // Point label position. Default (v2.3): first visible series above its
+  // marker, the next below. Large charts place by value instead: at each
+  // point the highest visible value is labeled above and the others below,
+  // so two close lines push their labels apart rather than onto each other;
+  // a label that would drop into the x-axis text is held just above it.
+  const labelY = (v, i, vi) => {
+    if (!large) return y(v) + (vi % 2 === 0 ? -7 : 14);
+    const here = visible.map(({ s }) => s.values[i]).filter((x) => typeof x === "number" && isFinite(x));
+    const top = here.length < 2 || v >= Math.max(...here);
+    const tied = here.filter((x) => x === v).length > 1;
+    const above = tied ? vi % 2 === 0 : top;
+    return above ? y(v) - 8 : Math.min(y(v) + 17, H - padB - 2);
+  };
   const gw = innerW / xLabels.length;
   const ticks = [0, 1, 2, 3, 4].map((i) => min + ((max - min) * i) / 4);
 
@@ -127,8 +144,8 @@ export function MfgChartSection({ section, seriesStyles, compact }) {
                     the first label below, so close lines do not collide. */}
                 {section.pointLabels && s.values.map((v, i) =>
                   typeof v === "number" && isFinite(v) ? (
-                    <text key={`l${i}`} x={padL + gw * (i + 0.5)} y={y(v) + (vi % 2 === 0 ? -7 : 14)}
-                      textAnchor="middle" fontSize={8.5} fontWeight={700}
+                    <text key={`l${i}`} x={padL + gw * (i + 0.5)} y={labelY(v, i, vi)}
+                      textAnchor="middle" fontSize={large ? 10.5 : 8.5} fontWeight={700}
                       fill={colorOf(si)} fontFamily="Inter, sans-serif">
                       {fmtAxisValue(v, section.format)}
                     </text>
