@@ -81,7 +81,9 @@ every client can differ. Look, colors, and typography are owned by the hub.
     (`{[listingId]: {text,by,at,history[]}}`) so nightly writer runs never
     touch notes. `notesDoc` must start with `mfg-client-{clientId}-`.
   - `kpiExplorer` — additive components per `{bedrooms,tags}` group per period
-    (`cur`/`ly` with `rent`,`booked`,`avail` arrays and `listings`); `kpis`
+    (`cur`/`ly` with one array per component, one entry per period, and `listings`;
+    amended 2026-10-08 in v2.4: any additive arrays the KPI exprs name, Bear Camp ships
+    `rent`,`booked`,`occ`,`avail`); `kpis`
     declare `expr` of only `sum:<c>`, `ratio:<a>/<b>`, or `count`; `format`
     `currency|percent|number`; `granularity` `month|week`. The hub aggregates
     the current filter selection and evaluates the exprs — no other math.
@@ -265,3 +267,17 @@ kpiExplorer; only Bear Camp and its `demo` mirror use that section type.
     replaces the block `sub` when present. A view's `empty` text renders muted (13px) in
     place of the table when the view has a table with zero rows, or when it has no table and
     no paragraphs.
+- **Amendment (2026-10-08, Bear Camp APO): kpiExplorer components are open-ended.** A group's
+  `cur` and `ly` may carry any number of additive components, each an array of numbers (a
+  null reads as 0) with one entry per `periods` label. The hub sums, over the groups in the
+  current filter selection, every numeric array it finds in any group's `cur` or `ly` (the
+  union of keys across all groups and both sides; a group that lacks a component adds 0 to
+  it), then evaluates the `kpis` exprs against those sums. The components that matter are the
+  ones the exprs name (`sum:<c>`, `ratio:<a>/<b>`); a component no expr names is summed and
+  has no effect. `listings` stays a plain number per group and feeds `count`. Bear Camp's
+  APO change (pending Mike's decision on last year's Jan and Feb, 2026-10-08) ships `rent`
+  (rent of stays arriving in the period), `booked` (nights of those stays, the ADR
+  denominator), `occ` (booked stay nights falling inside the period) and `avail` (nights
+  available inside the period: booked plus open, calendar blocks excluded), so its APO is
+  `ratio:occ/avail`. A doc that ships only `rent`, `booked` and `avail` renders exactly as
+  before.

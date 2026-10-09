@@ -31,12 +31,22 @@ export function MfgKpiExplorerSection({ section }) {
     (!anyBr || brSel[g.bedrooms]) && (!anyTag || (g.tags || []).some((t) => tagSel[t])));
 
   const periods = section.periods || [];
+  // Components (v2.4 amendment, 2026-10-08): every numeric array in any group's
+  // cur or ly is an additive component, so a writer can add one (Bear Camp's
+  // occ) without a hub change. The key set is the union across ALL groups and
+  // both sides, so it does not shift with the filter selection; a group that
+  // lacks a component adds 0 to it. `listings` stays the per-group count.
+  const isNumArr = (v) => Array.isArray(v) && v.every((x) => x == null || typeof x === "number");
+  const compKeys = [...new Set(groups.flatMap((g) => ["cur", "ly"].flatMap((side) =>
+    Object.keys(g[side] || {}).filter((k) => k !== "listings" && isNumArr(g[side][k])))))];
   const combine = (side) => {
-    const c = { rent: periods.map(() => 0), booked: periods.map(() => 0), avail: periods.map(() => 0), listings: 0 };
+    const c = { listings: 0 };
+    for (const k of compKeys) c[k] = periods.map(() => 0);
     for (const g of active) {
       c.listings += g.listings || 0;
-      for (const k of ["rent", "booked", "avail"]) {
-        (g[side]?.[k] || []).forEach((v, i) => { c[k][i] += v || 0; });
+      for (const k of compKeys) {
+        const arr = g[side]?.[k];
+        if (isNumArr(arr)) arr.forEach((v, i) => { c[k][i] += v || 0; });
       }
     }
     return c;
